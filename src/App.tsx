@@ -64,6 +64,8 @@ export default function App() {
 
   // Handle Login success
   const handleLoginSuccess = () => {
+    const user = StorageService.getCurrentUser();
+    setCurrentUser(user);
     refreshData();
     setIsAuthOpen(false);
   };

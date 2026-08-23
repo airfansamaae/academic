@@ -392,53 +392,64 @@ export class StorageService {
     username: string,
     password?: string
   ): { success: boolean; message: string; user?: User } {
-    const cleanUser = (username || '').trim().toLowerCase();
-    const cleanPass = (password || '').trim();
-    const users = this.getUsers();
+    try {
+      const cleanUser = (username || '').trim().toLowerCase();
+      const cleanPass = (password || '').trim();
+      const users = this.getUsers();
 
-    // 1. Master Admin Login (case-insensitive for 'admin', matches 456789 or custom password)
-    if (cleanUser === 'admin' || cleanUser === 'administrator') {
-      let masterAdmin = users.find((u) => u.username.toLowerCase() === 'admin' || u.role === 'ADMIN');
-      const isValidPass = cleanPass === '456789' || (masterAdmin && masterAdmin.password === cleanPass);
+      // 1. Master Admin Login (case-insensitive for 'admin', 'administrator', or matches Admin role)
+      if (cleanUser === 'admin' || cleanUser === 'administrator') {
+        let masterAdmin = users.find((u) => u.username.toLowerCase() === 'admin' || u.role === 'ADMIN');
+        const isValidPass = cleanPass === '456789' || (masterAdmin && masterAdmin.password === cleanPass);
 
-      if (isValidPass) {
-        if (!masterAdmin) {
-          masterAdmin = { ...INITIAL_USERS[0] };
-          users.unshift(masterAdmin);
+        if (isValidPass) {
+          if (!masterAdmin) {
+            masterAdmin = { ...INITIAL_USERS[0] };
+            users.unshift(masterAdmin);
+          }
+          masterAdmin.role = 'ADMIN';
+          masterAdmin.status = 'ACTIVE';
+          masterAdmin.password = cleanPass || '456789';
+          this.saveUsers(users);
+          this.setCurrentUser(masterAdmin);
+          return { success: true, message: 'ยินดีต้อนรับเข้าสู่ระบบในฐานะ Master Admin', user: masterAdmin };
+        } else {
+          return { success: false, message: 'รหัสผ่านสำหรับ Admin ไม่ถูกต้อง' };
         }
-        masterAdmin.role = 'ADMIN';
-        masterAdmin.status = 'ACTIVE';
-        masterAdmin.password = cleanPass || '456789';
-        this.saveUsers(users);
-        this.setCurrentUser(masterAdmin);
-        return { success: true, message: 'ยินดีต้อนรับเข้าสู่ระบบในฐานะ Master Admin', user: masterAdmin };
-      } else {
-        return { success: false, message: 'รหัสผ่านสำหรับ Admin ไม่ถูกต้อง (รหัสผ่านคือ 456789)' };
       }
+
+      // 2. Normal Member Login
+      const user = users.find(
+        (u) => u.username.toLowerCase() === cleanUser
+      );
+
+      if (!user) {
+        return { success: false, message: 'ไม่พบบัญชีผู้ใช้นี้ในระบบ' };
+      }
+
+      if (cleanPass && user.password && user.password !== cleanPass) {
+        return { success: false, message: 'รหัสผ่านไม่ถูกต้อง' };
+      }
+
+      if (user.status === 'PENDING') {
+        return {
+          success: false,
+          message: 'บัญชีของคุณอยู่ระหว่างรอผู้ดูแลระบบ (Admin) อนุมัติ โปรดติดต่อเจ้าหน้าที่',
+        };
+      }
+
+      this.setCurrentUser(user);
+      return { success: true, message: `ยินดีต้อนรับคุณ ${user.fullName}`, user };
+    } catch (e) {
+      console.error('Login error:', e);
+      // Fallback emergency admin login
+      if ((username || '').trim().toLowerCase() === 'admin' && (password || '').trim() === '456789') {
+        const adminUser = { ...INITIAL_USERS[0] };
+        this.setCurrentUser(adminUser);
+        return { success: true, message: 'ยินดีต้อนรับเข้าสู่ระบบในฐานะ Master Admin', user: adminUser };
+      }
+      return { success: false, message: 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ กรุณาลองใหม่อีกครั้ง' };
     }
-
-    // 2. Normal Member Login
-    const user = users.find(
-      (u) => u.username.toLowerCase() === cleanUser
-    );
-
-    if (!user) {
-      return { success: false, message: 'ไม่พบบัญชีผู้ใช้นี้ในระบบ' };
-    }
-
-    if (cleanPass && user.password && user.password !== cleanPass) {
-      return { success: false, message: 'รหัสผ่านไม่ถูกต้อง' };
-    }
-
-    if (user.status === 'PENDING') {
-      return {
-        success: false,
-        message: 'บัญชีของคุณอยู่ระหว่างรอผู้ดูแลระบบ (Admin) อนุมัติ โปรดติดต่อเจ้าหน้าที่',
-      };
-    }
-
-    this.setCurrentUser(user);
-    return { success: true, message: `ยินดีต้อนรับคุณ ${user.fullName}`, user };
   }
 
   static approveUser(userId: string): void {

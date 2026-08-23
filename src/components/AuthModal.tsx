@@ -2,23 +2,17 @@ import React, { useState } from 'react';
 import {
   LogIn,
   UserPlus,
-  KeyRound,
   School,
-  User as UserIcon,
-  ShieldCheck,
-  Sparkles,
-  CheckCircle2,
   AlertCircle,
   X,
-  Lock,
   Eye,
   EyeOff,
+  CheckCircle2,
 } from 'lucide-react';
 import { StorageService } from '../services/storage';
 import {
   notifySuccess,
   notifyError,
-  notifyWarning,
 } from '../services/notifications';
 
 interface AuthModalProps {
@@ -40,52 +34,91 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [loginError, setLoginError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Register Form
   const [regFullName, setRegFullName] = useState('');
   const [regUsername, setRegUsername] = useState('');
   const [regPassword, setRegPassword] = useState('');
-  const [regSchool, setRegSchool] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
+  const [regError, setRegError] = useState('');
+  const [regSuccess, setRegSuccess] = useState('');
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!loginUsername.trim() || !loginPassword.trim()) {
-      notifyError('กรุณากรอก User ID และรหัสผ่าน');
+    setLoginError('');
+
+    const u = loginUsername.trim();
+    const p = loginPassword.trim();
+
+    if (!u || !p) {
+      setLoginError('กรุณากรอก User ID และรหัสผ่านให้ครบถ้วน');
       return;
     }
 
-    const res = StorageService.login(loginUsername.trim(), loginPassword.trim());
-    if (res.success) {
-      notifySuccess(res.message);
-      onLoginSuccess();
-      if (onClose) onClose();
-    } else {
-      notifyError(res.message);
+    setIsSubmitting(true);
+
+    try {
+      const res = StorageService.login(u, p);
+      if (res.success && res.user) {
+        notifySuccess(res.message);
+        onLoginSuccess();
+        if (onClose) onClose();
+      } else {
+        setLoginError(res.message || 'รหัสผ่านหรือ User ID ไม่ถูกต้อง');
+        notifyError(res.message || 'รหัสผ่านหรือ User ID ไม่ถูกต้อง');
+      }
+    } catch (err: any) {
+      console.error('Login error:', err);
+      setLoginError('เกิดข้อผิดพลาดในการเข้าสู่ระบบ กรุณาลองใหม่อีกครั้ง');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!regFullName.trim() || !regUsername.trim() || !regPassword.trim()) {
-      notifyError('กรุณากรอกข้อมูลให้ครบถ้วน');
+    setRegError('');
+    setRegSuccess('');
+
+    const fn = regFullName.trim();
+    const un = regUsername.trim();
+    const pw = regPassword.trim();
+
+    if (!fn || !un || !pw) {
+      setRegError('กรุณากรอกข้อมูลให้ครบทุกช่องที่มีเครื่องหมาย *');
       return;
     }
 
-    const res = StorageService.registerUser({
-      fullName: regFullName.trim(),
-      username: regUsername.trim(),
-      password: regPassword.trim(),
-      school: regSchool.trim() || 'โรงเรียนวิชาการวิทยาคาร',
-    });
+    setIsSubmitting(true);
 
-    if (res.success) {
-      notifySuccess('ลงทะเบียนสำเร็จ!', res.message);
-      setMode('LOGIN');
-      setLoginUsername(regUsername.trim());
-      setLoginPassword(regPassword.trim());
-    } else {
-      notifyError(res.message);
+    try {
+      const res = StorageService.registerUser({
+        fullName: fn,
+        username: un,
+        password: pw,
+        school: 'โรงเรียนวิชาการวิทยาคาร',
+      });
+
+      if (res.success) {
+        setRegSuccess('ลงทะเบียนสำเร็จ! กำลังสลับไปหน้าเข้าสู่ระบบ...');
+        notifySuccess('ลงทะเบียนสำเร็จ!', res.message);
+        setTimeout(() => {
+          setMode('LOGIN');
+          setLoginUsername(un);
+          setLoginPassword(pw);
+          setRegSuccess('');
+        }, 1500);
+      } else {
+        setRegError(res.message);
+        notifyError(res.message);
+      }
+    } catch (err: any) {
+      console.error('Register error:', err);
+      setRegError('เกิดข้อผิดพลาดในการลงทะเบียน กรุณาลองใหม่');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -95,7 +128,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {onClose && (
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition-colors"
+            className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -114,41 +147,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </p>
         </div>
 
-        {/* Security Notice & Admin Helper */}
-        <div className="mb-5 p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-          <div className="flex items-center space-x-2.5">
-            <div className="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
-              <Lock className="w-3.5 h-3.5" />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-slate-800">ระบบเข้าสู่ระบบงานวิชาการ</p>
-              <p className="text-[11px] text-slate-500">กรุณากรอก User ID และรหัสผ่านเพื่อเข้าใช้งาน</p>
-            </div>
-          </div>
-
-          <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px]">
-            <span className="text-slate-600">
-              บัญชี Admin: <span className="font-bold text-purple-700 font-mono">Admin</span> / รหัสผ่าน: <span className="font-bold text-purple-700 font-mono">456789</span>
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                setMode('LOGIN');
-                setLoginUsername('Admin');
-                setLoginPassword('456789');
-              }}
-              className="px-2 py-0.5 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-md font-semibold text-[10px] cursor-pointer transition-colors"
-            >
-              กรอกให้อัตโนมัติ
-            </button>
-          </div>
-        </div>
-
         {/* Tab switch between Login and Register */}
         <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-2xl mb-5 text-xs font-bold">
           <button
             type="button"
-            onClick={() => setMode('LOGIN')}
+            onClick={() => {
+              setMode('LOGIN');
+              setLoginError('');
+            }}
             className={`py-2 rounded-xl transition-all cursor-pointer ${
               mode === 'LOGIN' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'
             }`}
@@ -157,7 +163,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => setMode('REGISTER')}
+            onClick={() => {
+              setMode('REGISTER');
+              setRegError('');
+            }}
             className={`py-2 rounded-xl transition-all cursor-pointer ${
               mode === 'REGISTER' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-900'
             }`}
@@ -169,27 +178,40 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* Form: LOGIN */}
         {mode === 'LOGIN' && (
           <form onSubmit={handleLogin} className="space-y-4 text-xs">
+            {loginError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center space-x-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{loginError}</span>
+              </div>
+            )}
+
             <div className="space-y-1.5">
-              <label className="font-bold text-slate-700">User ID / ชื่อผู้ใช้</label>
+              <label className="font-bold text-slate-700">User ID / ชื่อผู้ใช้ *</label>
               <input
                 type="text"
                 required
-                placeholder="เช่น Admin หรือ User ID ของคุณ"
+                placeholder="ระบุ User ID ของคุณ"
                 value={loginUsername}
-                onChange={(e) => setLoginUsername(e.target.value)}
+                onChange={(e) => {
+                  setLoginUsername(e.target.value);
+                  if (loginError) setLoginError('');
+                }}
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 text-sm font-medium"
               />
             </div>
 
             <div className="space-y-1.5">
-              <label className="font-bold text-slate-700">รหัสผ่าน (Password)</label>
+              <label className="font-bold text-slate-700">รหัสผ่าน (Password) *</label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
-                  placeholder="เช่น 456789"
+                  placeholder="กรอกรหัสผ่าน"
                   value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
+                  onChange={(e) => {
+                    setLoginPassword(e.target.value);
+                    if (loginError) setLoginError('');
+                  }}
                   className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 text-sm font-medium"
                 />
                 <button
@@ -204,10 +226,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
             <button
               type="submit"
-              className="w-full btn-glow-purple py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-sm transition-all cursor-pointer flex items-center justify-center space-x-2"
+              disabled={isSubmitting}
+              className="w-full btn-glow-purple py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-all cursor-pointer flex items-center justify-center space-x-2 shadow-md"
             >
               <LogIn className="w-4 h-4" />
-              <span>เข้าสู่ระบบ</span>
+              <span>{isSubmitting ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}</span>
             </button>
           </form>
         )}
@@ -215,6 +238,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         {/* Form: REGISTER */}
         {mode === 'REGISTER' && (
           <form onSubmit={handleRegister} className="space-y-3.5 text-xs">
+            {regError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center space-x-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{regError}</span>
+              </div>
+            )}
+
+            {regSuccess && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 text-xs flex items-center space-x-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{regSuccess}</span>
+              </div>
+            )}
+
             <div className="space-y-1">
               <label className="font-bold text-slate-700">ชื่อ-นามสกุล *</label>
               <input
@@ -267,10 +304,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
             <button
               type="submit"
-              className="w-full btn-glow-purple py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-sm transition-all cursor-pointer flex items-center justify-center space-x-2"
+              disabled={isSubmitting}
+              className="w-full btn-glow-purple py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-all cursor-pointer flex items-center justify-center space-x-2 shadow-md"
             >
               <UserPlus className="w-4 h-4" />
-              <span>ลงทะเบียนสมัครสมาชิก</span>
+              <span>{isSubmitting ? 'กำลังบันทึกข้อมูล...' : 'ลงทะเบียนสมัครสมาชิก'}</span>
             </button>
           </form>
         )}
