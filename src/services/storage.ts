@@ -314,18 +314,19 @@ export class StorageService {
       }
     }
 
-    // Ensure Master Admin always exists with valid credentials
-    const adminIndex = userList.findIndex((u) => u.username.toLowerCase() === 'admin');
+    // Ensure Master Admin always exists with valid credentials & ADMIN role
+    const adminIndex = userList.findIndex((u) => u.username.toLowerCase() === 'admin' || u.role === 'ADMIN');
     if (adminIndex === -1) {
-      userList.unshift(INITIAL_USERS[0]);
+      userList.unshift({ ...INITIAL_USERS[0] });
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(userList));
     } else {
-      // Ensure admin has valid Admin role and Active status
-      if (userList[adminIndex].role !== 'ADMIN' || userList[adminIndex].status !== 'ACTIVE') {
-        userList[adminIndex].role = 'ADMIN';
-        userList[adminIndex].status = 'ACTIVE';
-        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(userList));
+      // Ensure admin has valid Admin role, Active status, and fallback password
+      userList[adminIndex].role = 'ADMIN';
+      userList[adminIndex].status = 'ACTIVE';
+      if (!userList[adminIndex].password) {
+        userList[adminIndex].password = '456789';
       }
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(userList));
     }
 
     return userList;
@@ -396,24 +397,23 @@ export class StorageService {
     const users = this.getUsers();
 
     // 1. Master Admin Login (case-insensitive for 'admin', matches 456789 or custom password)
-    if (cleanUser === 'admin') {
-      let masterAdmin = users.find((u) => u.username.toLowerCase() === 'admin');
+    if (cleanUser === 'admin' || cleanUser === 'administrator') {
+      let masterAdmin = users.find((u) => u.username.toLowerCase() === 'admin' || u.role === 'ADMIN');
       const isValidPass = cleanPass === '456789' || (masterAdmin && masterAdmin.password === cleanPass);
 
       if (isValidPass) {
         if (!masterAdmin) {
           masterAdmin = { ...INITIAL_USERS[0] };
           users.unshift(masterAdmin);
-          this.saveUsers(users);
-        } else {
-          masterAdmin.role = 'ADMIN';
-          masterAdmin.status = 'ACTIVE';
-          this.saveUsers(users);
         }
+        masterAdmin.role = 'ADMIN';
+        masterAdmin.status = 'ACTIVE';
+        masterAdmin.password = cleanPass || '456789';
+        this.saveUsers(users);
         this.setCurrentUser(masterAdmin);
         return { success: true, message: 'ยินดีต้อนรับเข้าสู่ระบบในฐานะ Master Admin', user: masterAdmin };
       } else {
-        return { success: false, message: 'รหัสผ่านสำหรับ Admin ไม่ถูกต้อง (รหัสเริ่มต้นคือ 456789)' };
+        return { success: false, message: 'รหัสผ่านสำหรับ Admin ไม่ถูกต้อง (รหัสผ่านคือ 456789)' };
       }
     }
 
