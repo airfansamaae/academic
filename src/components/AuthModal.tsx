@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   AlertCircle,
   X,
+  Lock,
 } from 'lucide-react';
 import { StorageService } from '../services/storage';
 import {
@@ -42,30 +43,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [regUsername, setRegUsername] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regSchool, setRegSchool] = useState('');
-
-  // Quick bypass Master Admin
-  const handleQuickMasterAdmin = () => {
-    setLoginUsername('Admin');
-    setLoginPassword('456789');
-    const res = StorageService.login('Admin', '456789');
-    if (res.success) {
-      notifySuccess('เข้าสู่ระบบสำเร็จในฐานะ Master Admin');
-      onLoginSuccess();
-      if (onClose) onClose();
-    }
-  };
-
-  // Quick login sample teacher
-  const handleQuickTeacher = () => {
-    setLoginUsername('teacher_somchai');
-    setLoginPassword('password123');
-    const res = StorageService.login('teacher_somchai', 'password123');
-    if (res.success) {
-      notifySuccess(`ยินดีต้อนรับ ${res.user?.fullName}`);
-      onLoginSuccess();
-      if (onClose) onClose();
-    }
-  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,34 +110,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </p>
         </div>
 
-        {/* Master Admin Bypass Banner */}
-        <div className="mb-5 p-3 bg-purple-50/80 border border-purple-200/80 rounded-2xl space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-1.5 text-xs font-bold text-purple-900">
-              <ShieldCheck className="w-4 h-4 text-purple-600" />
-              <span>เข้าสู่ระบบด่วน (Quick Access):</span>
-            </div>
-            <span className="text-[11px] font-medium text-purple-700 bg-white px-2 py-0.5 rounded-md border border-purple-200">
-              ผู้ดูแลระบบ & ครูผู้สอน
-            </span>
+        {/* Security Notice */}
+        <div className="mb-5 p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center space-x-2.5">
+          <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+            <Lock className="w-4 h-4" />
           </div>
-
-          <div className="grid grid-cols-2 gap-2 pt-1">
-            <button
-              type="button"
-              onClick={handleQuickMasterAdmin}
-              className="btn-glow-purple py-1.5 px-2 bg-purple-600 hover:bg-purple-700 text-white text-[11px] font-bold rounded-xl transition-all cursor-pointer text-center"
-            >
-              🔑 คลิกเข้า Master Admin
-            </button>
-
-            <button
-              type="button"
-              onClick={handleQuickTeacher}
-              className="py-1.5 px-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-[11px] font-bold rounded-xl transition-all cursor-pointer text-center"
-            >
-              👤 เข้าเป็นครู (สมชาย)
-            </button>
+          <div>
+            <p className="text-xs font-bold text-slate-800">ระบบรักษาความปลอดภัยสูง</p>
+            <p className="text-[11px] text-slate-500">กรุณากรอก User ID และรหัสผ่านที่ถูกต้องเพื่อยืนยันตัวตน</p>
           </div>
         </div>
 
@@ -194,7 +151,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               <input
                 type="text"
                 required
-                placeholder="เช่น Admin หรือ teacher_somchai"
+                placeholder="ระบุ User ID ของคุณ"
                 value={loginUsername}
                 onChange={(e) => setLoginUsername(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 text-sm font-medium"

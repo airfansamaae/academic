@@ -50,11 +50,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [fullName, setFullName] = useState(currentUser.fullName);
   const [school, setSchool] = useState(currentUser.school);
   const [avatarUrl, setAvatarUrl] = useState(currentUser.avatarUrl);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   // School & Footer Form (Admin)
   const [schoolName, setSchoolName] = useState(settings.schoolName);
   const [schoolLogoUrl, setSchoolLogoUrl] = useState(settings.schoolLogoUrl);
   const [footerText, setFooterText] = useState(settings.footerText);
+  const [gDriveFolderId, setGDriveFolderId] = useState(settings.gDriveFolderId || '1oOywsmTzdy1CMJDQuzNk9yJhH0lwWVZu');
+  const [gasWebhookUrl, setGasWebhookUrl] = useState(
+    settings.gasWebhookUrl ||
+      'https://script.google.com/macros/s/AKfycbzve6nmcAMloypZThIb5aRyKfLd3NJCeoddYU8NToVMCXKltjG9WWEI6yA-tetESAt26w/exec'
+  );
 
   // Handle Logo Upload simulation
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -85,13 +92,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   // Save Profile
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
-    StorageService.updateUser({
+    if (newPassword && newPassword !== confirmPassword) {
+      notifyError('รหัสผ่านใหม่และการยืนยันรหัสผ่านไม่ตรงกัน');
+      return;
+    }
+
+    const updatedUser = {
       ...currentUser,
       fullName: fullName.trim(),
       school: school.trim(),
       avatarUrl: avatarUrl.trim(),
-    });
-    notifySuccess('บันทึกข้อมูลส่วนตัวเรียบร้อยแล้ว');
+      ...(newPassword ? { password: newPassword.trim() } : {}),
+    };
+
+    StorageService.updateUser(updatedUser);
+    notifySuccess('บันทึกข้อมูลโปรไฟล์และรหัสผ่านเรียบร้อยแล้ว');
+    setNewPassword('');
+    setConfirmPassword('');
     onRefreshData();
   };
 
@@ -103,8 +120,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       schoolName: schoolName.trim(),
       schoolLogoUrl: schoolLogoUrl.trim(),
       footerText: footerText.trim(),
+      gDriveFolderId: gDriveFolderId.trim() || '1oOywsmTzdy1CMJDQuzNk9yJhH0lwWVZu',
+      gasWebhookUrl: gasWebhookUrl.trim(),
     });
-    notifySuccess('บันทึกข้อมูลสถานศึกษาและ Footer สำเร็จ');
+    notifySuccess('บันทึกข้อมูลสถานศึกษาและการเชื่อมต่อ Google Drive สำเร็จ');
     onRefreshData();
   };
 
@@ -263,6 +282,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 />
               </div>
 
+              {/* Change Password Section */}
+              <div className="p-3 bg-purple-50/50 rounded-2xl border border-purple-100 space-y-2.5">
+                <div className="flex items-center space-x-1.5 font-bold text-purple-900">
+                  <Shield className="w-4 h-4 text-purple-600" />
+                  <span>เปลี่ยนรหัสผ่าน (หากต้องการเปลี่ยน)</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <input
+                    type="password"
+                    placeholder="รหัสผ่านใหม่"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-purple-200 rounded-xl outline-hidden text-xs"
+                  />
+                  <input
+                    type="password"
+                    placeholder="ยืนยันรหัสผ่านใหม่"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full px-3 py-2 bg-white border border-purple-200 rounded-xl outline-hidden text-xs"
+                  />
+                </div>
+              </div>
+
               <div className="pt-2 flex justify-end">
                 <button
                   type="submit"
@@ -319,19 +362,39 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 />
               </div>
 
-              {/* Cloud Storage Status info */}
-              <div className="p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-2">
+              {/* Google Drive Integration Configuration */}
+              <div className="p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-3">
                 <div className="flex items-center space-x-2 font-bold text-slate-700">
-                  <Database className="w-4 h-4 text-purple-600" />
-                  <span>สถานะการเชื่อมต่อระบบคลาวด์และฐานข้อมูล:</span>
+                  <HardDrive className="w-4 h-4 text-purple-600" />
+                  <span>การเชื่อมต่อ Google Drive อัตโนมัติ (Apps Script Webhook):</span>
                 </div>
+
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-600">Google Drive Folder ID</label>
+                  <input
+                    type="text"
+                    value={gDriveFolderId}
+                    onChange={(e) => setGDriveFolderId(e.target.value)}
+                    placeholder="1oOywsmTzdy1CMJDQuzNk9yJhH0lwWVZu"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl outline-hidden text-xs font-mono"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-semibold text-slate-600">Google Apps Script Webhook URL</label>
+                  <input
+                    type="text"
+                    value={gasWebhookUrl}
+                    onChange={(e) => setGasWebhookUrl(e.target.value)}
+                    placeholder="https://script.google.com/macros/s/.../exec"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl outline-hidden text-xs font-mono text-slate-700"
+                  />
+                </div>
+
                 <div className="p-2.5 bg-emerald-50 rounded-xl border border-emerald-200 text-[11px] text-emerald-800 font-medium space-y-1">
                   <p className="flex items-center space-x-1.5 font-bold">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span>ระบบฐานข้อมูลและการจัดเก็บไฟล์เชื่อมต่อสมบูรณ์ (Active)</span>
-                  </p>
-                  <p className="text-slate-500 text-[10px]">
-                    ระบบทำงานอัตโนมัติเบื้องหลัง จัดเก็บข้อมูลและไฟล์งานอย่างปลอดภัย
+                    <span>เชื่อมต่อ Google Drive สำเร็จ: ไฟล์งานที่อัปโหลดจะถูกส่งไปยังไดรฟ์โดยตรง</span>
                   </p>
                 </div>
               </div>

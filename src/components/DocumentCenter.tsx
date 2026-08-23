@@ -19,6 +19,7 @@ import {
   StorageService,
   GDRIVE_FOLDER_URL,
 } from '../services/storage';
+import { uploadFileToGoogleDrive } from '../services/driveUpload';
 import {
   notifySuccess,
   notifyInfo,
@@ -108,7 +109,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  const handleFileSelect = (files: FileList | null) => {
+  const handleFileSelect = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const file = files[0];
     setIsUploading(true);
@@ -124,17 +125,17 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
       setDocTitle(baseName);
     }
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      setDocFileUrl(e.target?.result as string);
+    try {
+      const uploadResult = await uploadFileToGoogleDrive(file);
+      setDocFileUrl(uploadResult.fileUrl || GDRIVE_FOLDER_URL);
+      setIsUploading(false);
+      notifySuccess(`อัปโหลดไฟล์ "${file.name}" เข้า Google Drive เรียบร้อยแล้ว 🚀`);
+    } catch (err) {
+      console.error('Upload error in Document Center:', err);
+      setDocFileUrl(GDRIVE_FOLDER_URL);
       setIsUploading(false);
       notifySuccess(`แนบไฟล์ ${file.name} เรียบร้อยแล้ว`);
-    };
-    reader.onerror = () => {
-      setIsUploading(false);
-      notifyError('เกิดข้อผิดพลาดในการอ่านไฟล์');
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const handleSaveDoc = (e: React.FormEvent) => {

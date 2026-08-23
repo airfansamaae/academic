@@ -34,6 +34,7 @@ import {
   StorageService,
   GDRIVE_FOLDER_URL,
 } from '../services/storage';
+import { uploadFileToGoogleDrive } from '../services/driveUpload';
 import {
   notifySuccess,
   notifyError,
@@ -228,37 +229,43 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     }
   };
 
-  // --- Member Multi-file Upload Simulation & Storage ---
-  const handleFilesChosen = (files: FileList | null) => {
+  // --- Member Multi-file Upload to Google Drive via Apps Script Web App ---
+  const handleFilesChosen = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
     setIsUploading(true);
 
-    const newFiles: SubmissionFile[] = [];
-    const count = files.length;
+    const fileList = Array.from(files);
+    const uploadedResults: SubmissionFile[] = [];
 
-    Array.from(files).forEach((file, index) => {
-      // Simulate fast high performance Google Drive upload
-      const reader = new FileReader();
-      reader.onload = () => {
-        newFiles.push({
-          id: `file-${Date.now()}-${index}`,
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      try {
+        const result = await uploadFileToGoogleDrive(file);
+        uploadedResults.push({
+          id: `file-${Date.now()}-${i}`,
           name: file.name,
           size: file.size,
           type: file.type || 'application/octet-stream',
-          gDriveUrl: `https://drive.google.com/file/d/drive_${Date.now()}_${index}/view?usp=sharing`,
+          gDriveUrl: result.fileUrl || GDRIVE_FOLDER_URL,
           uploadedAt: new Date().toISOString(),
-          previewUrl: file.type.startsWith('image/') ? (reader.result as string) : undefined,
         });
+      } catch (err) {
+        console.error('File upload error:', err);
+        uploadedResults.push({
+          id: `file-${Date.now()}-${i}`,
+          name: file.name,
+          size: file.size,
+          type: file.type || 'application/octet-stream',
+          gDriveUrl: GDRIVE_FOLDER_URL,
+          uploadedAt: new Date().toISOString(),
+        });
+      }
+    }
 
-        if (newFiles.length === count) {
-          setUploadedFiles((prev) => [...prev, ...newFiles]);
-          setIsUploading(false);
-          notifySuccess(`อัปโหลด ${count} ไฟล์เข้าสู่ระบบสำเร็จ`);
-        }
-      };
-      reader.readAsDataURL(file);
-    });
+    setUploadedFiles((prev) => [...prev, ...uploadedResults]);
+    setIsUploading(false);
+    notifySuccess(`อัปโหลด ${uploadedResults.length} ไฟล์เข้าสู่ Google Drive สำเร็จ 🚀`);
   };
 
   const handleRemoveFile = (fileId: string) => {

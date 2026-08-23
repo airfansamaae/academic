@@ -93,6 +93,7 @@ export interface SystemSettings {
   schoolLogoUrl: string;
   footerText: string;
   gDriveFolderId: string;
+  gasWebhookUrl?: string;
   cloudflareDbId: string;
   updatedAt: string;
 }

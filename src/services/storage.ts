@@ -8,8 +8,10 @@ import {
   SubmissionFile,
 } from '../types';
 
-export const GDRIVE_FOLDER_ID = '1x4aph_PPHyhtmno5v7XeGJm2IW6WpnaE';
+export const GDRIVE_FOLDER_ID = '1oOywsmTzdy1CMJDQuzNk9yJhH0lwWVZu';
 export const GDRIVE_FOLDER_URL = `https://drive.google.com/drive/folders/${GDRIVE_FOLDER_ID}`;
+export const GAS_WEBHOOK_URL =
+  'https://script.google.com/macros/s/AKfycbzve6nmcAMloypZThIb5aRyKfLd3NJCeoddYU8NToVMCXKltjG9WWEI6yA-tetESAt26w/exec';
 export const CLOUDFLARE_DB_ID = 'databases/9bf82f5b-b9f5-4138-ac36-27dcd09c50e0/metrics';
 
 const STORAGE_KEYS = {
@@ -292,6 +294,7 @@ const INITIAL_SETTINGS: SystemSettings = {
   schoolLogoUrl: 'https://images.unsplash.com/photo-1546410531-bb4caa6b424d?w=150&auto=format&fit=crop&q=80',
   footerText: 'ระบบบริหารจัดการงานวิชาการ มอบหมายงานและส่งงาน © 2026 สงวนลิขสิทธิ์ทุกประการ',
   gDriveFolderId: GDRIVE_FOLDER_ID,
+  gasWebhookUrl: GAS_WEBHOOK_URL,
   cloudflareDbId: CLOUDFLARE_DB_ID,
   updatedAt: '2026-08-22T08:00:00.000Z',
 };
@@ -636,7 +639,13 @@ export class StorageService {
       return INITIAL_SETTINGS;
     }
     try {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      return {
+        ...INITIAL_SETTINGS,
+        ...parsed,
+        gDriveFolderId: parsed.gDriveFolderId || GDRIVE_FOLDER_ID,
+        gasWebhookUrl: parsed.gasWebhookUrl || GAS_WEBHOOK_URL,
+      };
     } catch {
       return INITIAL_SETTINGS;
     }
