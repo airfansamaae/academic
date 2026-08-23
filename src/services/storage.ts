@@ -333,7 +333,11 @@ export class StorageService {
   }
 
   static saveUsers(users: User[]): void {
-    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+    try {
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+    } catch (e) {
+      console.error('Storage quota or save error for users:', e);
+    }
   }
 
   static getCurrentUser(): User | null {
@@ -347,10 +351,14 @@ export class StorageService {
   }
 
   static setCurrentUser(user: User | null): void {
-    if (user) {
-      localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user));
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+    try {
+      if (user) {
+        localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user));
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+      }
+    } catch (e) {
+      console.error('Storage quota or save error for currentUser:', e);
     }
   }
 
@@ -468,14 +476,24 @@ export class StorageService {
   }
 
   static updateUser(updatedUser: User): void {
-    const users = this.getUsers().map((u) =>
-      u.id === updatedUser.id ? { ...updatedUser, updatedAt: getNowISO() } : u
-    );
-    this.saveUsers(users);
+    try {
+      const users = this.getUsers().map((u) =>
+        u.id === updatedUser.id || u.username.toLowerCase() === updatedUser.username.toLowerCase()
+          ? { ...updatedUser, updatedAt: getNowISO() }
+          : u
+      );
+      this.saveUsers(users);
 
-    const currentUser = this.getCurrentUser();
-    if (currentUser && currentUser.id === updatedUser.id) {
-      this.setCurrentUser({ ...updatedUser, updatedAt: getNowISO() });
+      const currentUser = this.getCurrentUser();
+      if (
+        currentUser &&
+        (currentUser.id === updatedUser.id ||
+          currentUser.username.toLowerCase() === updatedUser.username.toLowerCase())
+      ) {
+        this.setCurrentUser({ ...updatedUser, updatedAt: getNowISO() });
+      }
+    } catch (e) {
+      console.error('Storage quota or save error for updateUser:', e);
     }
   }
 
@@ -497,12 +515,13 @@ export class StorageService {
     localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(tasks));
   }
 
-  static createTask(task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'gDriveFolderId'>): Task {
+  static createTask(task: Omit<Task, 'id' | 'createdAt' | 'updatedAt' | 'gDriveFolderId'> & { gDriveFolderId?: string; gDriveFolderUrl?: string }): Task {
     const tasks = this.getTasks();
     const newTask: Task = {
       ...task,
       id: `task-${Date.now()}`,
-      gDriveFolderId: GDRIVE_FOLDER_ID,
+      gDriveFolderId: task.gDriveFolderId || GDRIVE_FOLDER_ID,
+      gDriveFolderUrl: task.gDriveFolderUrl || `https://drive.google.com/drive/folders/${task.gDriveFolderId || GDRIVE_FOLDER_ID}`,
       createdAt: getNowISO(),
       updatedAt: getNowISO(),
     };
@@ -693,7 +712,11 @@ export class StorageService {
   }
 
   static saveSettings(settings: SystemSettings): void {
-    const updated = { ...settings, updatedAt: getNowISO() };
-    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(updated));
+    try {
+      const updated = { ...settings, updatedAt: getNowISO() };
+      localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(updated));
+    } catch (e) {
+      console.error('Storage quota or save error for settings:', e);
+    }
   }
 }

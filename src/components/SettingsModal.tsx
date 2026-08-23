@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Settings,
@@ -8,11 +8,11 @@ import {
   CheckCircle2,
   Trash2,
   KeyRound,
-  Shield,
   Clock,
-  Sparkles,
   Camera,
   Save,
+  Check,
+  Loader2,
 } from 'lucide-react';
 import { User, SystemSettings } from '../types';
 import { StorageService } from '../services/storage';
@@ -30,6 +30,57 @@ interface SettingsModalProps {
   users: User[];
   onRefreshData: () => void;
 }
+
+// Client-side image compressor using Canvas to ensure Base64 is under ~30KB
+const compressImageFile = (
+  file: File,
+  maxWidth = 400,
+  maxHeight = 400,
+  quality = 0.85
+): Promise<string> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(e.target?.result as string);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        resolve(dataUrl);
+      };
+      img.onerror = () => {
+        resolve(e.target?.result as string);
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => {
+      resolve('');
+    };
+    reader.readAsDataURL(file);
+  });
+};
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
@@ -60,86 +111,157 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [schoolLogoUrl, setSchoolLogoUrl] = useState(settings.schoolLogoUrl || '');
   const [footerText, setFooterText] = useState(settings.footerText || '');
 
-  // Handle Avatar Upload
-  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Loading / Feedback States
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileSavedSuccess, setProfileSavedSuccess] = useState(false);
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [passwordSavedSuccess, setPasswordSavedSuccess] = useState(false);
+  const [isSavingSchool, setIsSavingSchool] = useState(false);
+  const [schoolSavedSuccess, setSchoolSavedSuccess] = useState(false);
+
+  // Sync state whenever props change
+  useEffect(() => {
+    if (currentUser) {
+      setFullName(currentUser.fullName || '');
+      setSchool(currentUser.school || '');
+      setAvatarUrl(currentUser.avatarUrl || '');
+    }
+    if (settings) {
+      setSchoolName(settings.schoolName || '');
+      setSchoolLogoUrl(settings.schoolLogoUrl || '');
+      setFooterText(settings.footerText || '');
+    }
+  }, [currentUser, settings, isOpen]);
+
+  // Handle Avatar Upload with image compression
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          setAvatarUrl(reader.result);
-          notifySuccess('อัปโหลดรูปภาพโปรไฟล์เรียบร้อยแล้ว');
+      try {
+        const compressed = await compressImageFile(file, 300, 300, 0.85);
+        if (compressed) {
+          setAvatarUrl(compressed);
+          notifySuccess('อัปโหลดและปรับขนาดรูปภาพโปรไฟล์เรียบร้อยแล้ว');
         }
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.error('Avatar upload error:', err);
+      }
     }
   };
 
-  // Handle Logo Upload
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle Logo Upload with image compression
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          setSchoolLogoUrl(reader.result);
-          notifySuccess('อัปโหลดโลโก้โรงเรียนเรียบร้อยแล้ว');
+      try {
+        const compressed = await compressImageFile(file, 400, 400, 0.85);
+        if (compressed) {
+          setSchoolLogoUrl(compressed);
+          notifySuccess('อัปโหลดและปรับขนาดโลโก้สถานศึกษาเรียบร้อยแล้ว');
         }
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.error('Logo upload error:', err);
+      }
     }
   };
 
-  // 1. Save Profile (No mandatory field blocks)
+  // 1. Save Profile
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
-    const updatedUser: User = {
-      ...currentUser,
-      fullName: fullName.trim() || currentUser.fullName || 'ผู้ใช้งาน',
-      school: school.trim() || currentUser.school || 'โรงเรียนวิชาการวิทยาคาร',
-      avatarUrl: avatarUrl || currentUser.avatarUrl,
-    };
+    setIsSavingProfile(true);
 
-    StorageService.updateUser(updatedUser);
-    notifySuccess('บันทึกข้อมูลส่วนตัวเรียบร้อยแล้ว ✨');
-    onRefreshData();
+    try {
+      const updatedUser: User = {
+        ...currentUser,
+        fullName: fullName.trim() || currentUser.fullName || 'ผู้ใช้งาน',
+        school: school.trim() || currentUser.school || 'โรงเรียนวิชาการวิทยาคาร',
+        avatarUrl: avatarUrl || currentUser.avatarUrl,
+      };
+
+      StorageService.updateUser(updatedUser);
+      setProfileSavedSuccess(true);
+      notifySuccess('บันทึกข้อมูลส่วนตัวเรียบร้อยแล้ว ✨');
+      onRefreshData();
+
+      setTimeout(() => {
+        setProfileSavedSuccess(false);
+      }, 2500);
+    } catch (err) {
+      console.error('Save profile error:', err);
+      notifyError('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
+    } finally {
+      setIsSavingProfile(false);
+    }
   };
 
   // 2. Save Password
   const handleSavePassword = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newPassword.trim()) {
+    const p1 = newPassword.trim();
+    const p2 = confirmPassword.trim();
+
+    if (!p1) {
       notifyError('กรุณากรอกรหัสผ่านใหม่');
       return;
     }
-    if (newPassword !== confirmPassword) {
+    if (p1 !== p2) {
       notifyError('รหัสผ่านใหม่และการยืนยันรหัสผ่านไม่ตรงกัน');
       return;
     }
 
-    const updatedUser: User = {
-      ...currentUser,
-      password: newPassword.trim(),
-    };
+    setIsSavingPassword(true);
 
-    StorageService.updateUser(updatedUser);
-    notifySuccess('เปลี่ยนรหัสผ่านใหม่เรียบร้อยแล้ว 🔒');
-    setNewPassword('');
-    setConfirmPassword('');
-    onRefreshData();
+    try {
+      const updatedUser: User = {
+        ...currentUser,
+        password: p1,
+      };
+
+      StorageService.updateUser(updatedUser);
+      setPasswordSavedSuccess(true);
+      notifySuccess('เปลี่ยนรหัสผ่านใหม่เรียบร้อยแล้ว 🔒');
+      setNewPassword('');
+      setConfirmPassword('');
+      onRefreshData();
+
+      setTimeout(() => {
+        setPasswordSavedSuccess(false);
+      }, 2500);
+    } catch (err) {
+      console.error('Save password error:', err);
+      notifyError('เกิดข้อผิดพลาดในการเปลี่ยนรหัสผ่าน');
+    } finally {
+      setIsSavingPassword(false);
+    }
   };
 
-  // 3. Save School & Footer Settings (No mandatory field blocks & No visible webhook url clutter)
+  // 3. Save School & Footer Settings
   const handleSaveSchoolSettings = (e: React.FormEvent) => {
     e.preventDefault();
-    StorageService.saveSettings({
-      ...settings,
-      schoolName: schoolName.trim() || settings.schoolName || 'โรงเรียนวิชาการวิทยาคาร',
-      schoolLogoUrl: schoolLogoUrl || settings.schoolLogoUrl,
-      footerText: footerText.trim() || settings.footerText,
-    });
-    notifySuccess('บันทึกข้อมูลสถานศึกษาและข้อความ Footer เรียบร้อยแล้ว ✨');
-    onRefreshData();
+    setIsSavingSchool(true);
+
+    try {
+      const updatedSettings: SystemSettings = {
+        ...settings,
+        schoolName: schoolName.trim() || settings.schoolName || 'โรงเรียนวิชาการวิทยาคาร',
+        schoolLogoUrl: schoolLogoUrl || settings.schoolLogoUrl,
+        footerText: footerText.trim() || settings.footerText,
+      };
+
+      StorageService.saveSettings(updatedSettings);
+      setSchoolSavedSuccess(true);
+      notifySuccess('บันทึกข้อมูลสถานศึกษาและข้อความ Footer เรียบร้อยแล้ว ✨');
+      onRefreshData();
+
+      setTimeout(() => {
+        setSchoolSavedSuccess(false);
+      }, 2500);
+    } catch (err) {
+      console.error('Save school settings error:', err);
+      notifyError('เกิดข้อผิดพลาดในการบันทึกข้อมูลสถานศึกษา');
+    } finally {
+      setIsSavingSchool(false);
+    }
   };
 
   // 4. Admin Member Approvals & Deletion
@@ -182,6 +304,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
 
           <button
+            type="button"
             onClick={onClose}
             className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
           >
@@ -192,6 +315,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Navigation Tabs */}
         <div className="flex items-center space-x-2 py-3 border-b border-slate-100 overflow-x-auto text-xs font-bold scrollbar-none">
           <button
+            type="button"
             onClick={() => setActiveTab('PROFILE')}
             className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center space-x-1.5 shrink-0 ${
               activeTab === 'PROFILE'
@@ -204,6 +328,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
 
           <button
+            type="button"
             onClick={() => setActiveTab('PASSWORD')}
             className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center space-x-1.5 shrink-0 ${
               activeTab === 'PASSWORD'
@@ -218,6 +343,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {isAdmin && (
             <>
               <button
+                type="button"
                 onClick={() => setActiveTab('SCHOOL')}
                 className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center space-x-1.5 shrink-0 ${
                   activeTab === 'SCHOOL'
@@ -230,6 +356,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </button>
 
               <button
+                type="button"
                 onClick={() => setActiveTab('MEMBERS')}
                 className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center space-x-1.5 shrink-0 ${
                   activeTab === 'MEMBERS'
@@ -251,7 +378,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Modal Body */}
         <div className="flex-1 overflow-y-auto py-4 space-y-4">
-          {/* TAB 1: Profile Settings (No URL input, Only Choose File) */}
+          {/* TAB 1: Profile Settings */}
           {activeTab === 'PROFILE' && (
             <form onSubmit={handleSaveProfile} className="space-y-4 text-xs">
               <div className="flex items-center space-x-4 p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80">
@@ -278,7 +405,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     onChange={handleAvatarUpload}
                     className="text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-purple-100 file:text-purple-700 hover:file:bg-purple-200 cursor-pointer"
                   />
-                  <p className="text-[11px] text-slate-400">รองรับไฟล์รูปภาพ PNG, JPG, JPEG</p>
+                  <p className="text-[11px] text-slate-400">ระบบบีบอัดและปรับขนาดรูปภาพให้อัตโนมัติ (PNG, JPG, JPEG)</p>
                 </div>
               </div>
 
@@ -309,16 +436,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="pt-2 flex justify-end">
                 <button
                   type="submit"
-                  className="btn-glow-purple px-5 py-2.5 font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition-all cursor-pointer flex items-center space-x-2 text-xs"
+                  disabled={isSavingProfile}
+                  className={`px-5 py-2.5 font-bold text-white rounded-xl transition-all cursor-pointer flex items-center space-x-2 text-xs shadow-md ${
+                    profileSavedSuccess
+                      ? 'bg-emerald-600 hover:bg-emerald-700'
+                      : 'btn-glow-purple bg-purple-600 hover:bg-purple-700'
+                  }`}
                 >
-                  <Save className="w-4 h-4" />
-                  <span>บันทึกข้อมูลส่วนตัว</span>
+                  {isSavingProfile ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>กำลังบันทึก...</span>
+                    </>
+                  ) : profileSavedSuccess ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>บันทึกเรียบร้อยแล้ว! ✨</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      <span>บันทึกข้อมูลส่วนตัว</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>
           )}
 
-          {/* TAB 2: Change Password (Dedicated Page) */}
+          {/* TAB 2: Change Password */}
           {activeTab === 'PASSWORD' && (
             <form onSubmit={handleSavePassword} className="space-y-4 text-xs">
               <div className="p-4 bg-purple-50/60 rounded-2xl border border-purple-100 flex items-start space-x-3">
@@ -360,16 +506,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="pt-2 flex justify-end">
                 <button
                   type="submit"
-                  className="btn-glow-purple px-5 py-2.5 font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition-all cursor-pointer flex items-center space-x-2 text-xs"
+                  disabled={isSavingPassword}
+                  className={`px-5 py-2.5 font-bold text-white rounded-xl transition-all cursor-pointer flex items-center space-x-2 text-xs shadow-md ${
+                    passwordSavedSuccess
+                      ? 'bg-emerald-600 hover:bg-emerald-700'
+                      : 'btn-glow-purple bg-purple-600 hover:bg-purple-700'
+                  }`}
                 >
-                  <KeyRound className="w-4 h-4" />
-                  <span>บันทึกรหัสผ่านใหม่</span>
+                  {isSavingPassword ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>กำลังบันทึก...</span>
+                    </>
+                  ) : passwordSavedSuccess ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>เปลี่ยนรหัสผ่านสำเร็จ! 🔒</span>
+                    </>
+                  ) : (
+                    <>
+                      <KeyRound className="w-4 h-4" />
+                      <span>บันทึกรหัสผ่านใหม่</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>
           )}
 
-          {/* TAB 3: School & Footer (Admin only, Cleaned UI) */}
+          {/* TAB 3: School & Footer (Admin only) */}
           {activeTab === 'SCHOOL' && isAdmin && (
             <form onSubmit={handleSaveSchoolSettings} className="space-y-4 text-xs">
               <div className="flex items-center space-x-4 p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80">
@@ -395,7 +560,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     onChange={handleLogoUpload}
                     className="text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-purple-100 file:text-purple-700 hover:file:bg-purple-200 cursor-pointer"
                   />
-                  <p className="text-[11px] text-slate-400">จะแสดงผลที่แถบเมนูด้านบนและส่วนหัวของเอกสาร</p>
+                  <p className="text-[11px] text-slate-400">ระบบบีบอัดและปรับขนาดรูปภาพให้อัตโนมัติ แสดงผลที่แถบเมนูด้านบน</p>
                 </div>
               </div>
 
@@ -432,10 +597,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="pt-2 flex justify-end">
                 <button
                   type="submit"
-                  className="btn-glow-purple px-5 py-2.5 font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition-all cursor-pointer flex items-center space-x-2 text-xs"
+                  disabled={isSavingSchool}
+                  className={`px-5 py-2.5 font-bold text-white rounded-xl transition-all cursor-pointer flex items-center space-x-2 text-xs shadow-md ${
+                    schoolSavedSuccess
+                      ? 'bg-emerald-600 hover:bg-emerald-700'
+                      : 'btn-glow-purple bg-purple-600 hover:bg-purple-700'
+                  }`}
                 >
-                  <Save className="w-4 h-4" />
-                  <span>บันทึกข้อมูลสถานศึกษา</span>
+                  {isSavingSchool ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>กำลังบันทึก...</span>
+                    </>
+                  ) : schoolSavedSuccess ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>บันทึกสถานศึกษาสำเร็จ! ✨</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      <span>บันทึกข้อมูลสถานศึกษา</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>
@@ -484,6 +668,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                         <div className="flex items-center space-x-1.5">
                           <button
+                            type="button"
                             onClick={() => handleApprove(u.id)}
                             className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center space-x-1 shadow-xs cursor-pointer"
                           >
@@ -491,6 +676,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             <span>อนุมัติ</span>
                           </button>
                           <button
+                            type="button"
                             onClick={() => handleDeleteUser(u.id)}
                             className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-xl cursor-pointer"
                             title="ปฏิเสธ / ลบ"
@@ -542,6 +728,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                       {u.username.toLowerCase() !== 'admin' && (
                         <button
+                          type="button"
                           onClick={() => handleDeleteUser(u.id)}
                           className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl cursor-pointer"
                           title="ลบสมาชิก"

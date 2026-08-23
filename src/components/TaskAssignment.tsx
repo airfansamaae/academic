@@ -34,7 +34,7 @@ import {
   StorageService,
   GDRIVE_FOLDER_URL,
 } from '../services/storage';
-import { uploadFileToGoogleDrive } from '../services/driveUpload';
+import { uploadFileToGoogleDrive, createGoogleDriveFolder } from '../services/driveUpload';
 import {
   notifySuccess,
   notifyError,
@@ -142,12 +142,16 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
   };
 
   // --- Admin Task Creation / Update ---
-  const handleSaveTask = (e: React.FormEvent) => {
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
+
+  const handleSaveTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!taskTitle.trim() || !taskDueDate) {
       notifyError('กรุณากรอกหัวข้องานและกำหนดส่งให้ครบถ้วน');
       return;
     }
+
+    setIsCreatingTask(true);
 
     if (editingTaskId) {
       const existing = tasks.find((t) => t.id === editingTaskId);
@@ -163,16 +167,23 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
         setEditingTaskId(null);
       }
     } else {
+      notifyInfo(`กำลังสร้างโฟลเดอร์ใน Google Drive สำหรับงาน: ${taskTitle.trim()}...`);
+      // Automatically create folder in Google Drive for this task
+      const folderRes = await createGoogleDriveFolder(taskTitle.trim());
+
       StorageService.createTask({
         title: taskTitle.trim(),
         category: 'งานวิชาการ',
         description: taskDescription.trim(),
         dueDate: taskDueDate,
         assignedBy: currentUser?.fullName || 'ผู้ดูแลระบบวิชาการ',
+        gDriveFolderId: folderRes.folderId,
+        gDriveFolderUrl: folderRes.folderUrl,
       });
-      notifySuccess('บันทึกการมอบหมายงานใหม่สำเร็จ');
+      notifySuccess(`บันทึกการมอบหมายงานและสร้างโฟลเดอร์ "${taskTitle.trim()}" ใน Google Drive เรียบร้อยแล้ว! 📁✨`);
     }
 
+    setIsCreatingTask(false);
     setTaskTitle('');
     setTaskDescription('');
     onRefreshData();
@@ -565,7 +576,20 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                     return (
                       <tr key={task.id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="py-3.5 px-3">
-                          <p className="font-bold text-slate-800 line-clamp-1">{task.title}</p>
+                          <div className="flex items-center space-x-2">
+                            <p className="font-bold text-slate-800 line-clamp-1">{task.title}</p>
+                            {task.gDriveFolderUrl && (
+                              <a
+                                href={task.gDriveFolderUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 p-1 rounded-md transition-colors"
+                                title="เปิดโฟลเดอร์ Google Drive ของงานนี้"
+                              >
+                                <HardDrive className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                          </div>
                           <p className="text-xs text-slate-500 line-clamp-1 mt-0.5">
                             {task.description || 'ไม่มีคำอธิบาย'}
                           </p>

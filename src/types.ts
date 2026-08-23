@@ -22,6 +22,7 @@ export interface Task {
   dueDate: string; // YYYY-MM-DD
   assignedBy: string;
   gDriveFolderId: string;
+  gDriveFolderUrl?: string;
   createdAt: string;
   updatedAt: string;
 }

@@ -71,13 +71,32 @@ export const Dashboard: React.FC<DashboardProps> = ({
   ];
 
   const daysOfWeekThai = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
+  const fullDaysOfWeekThai = ['วันอาทิตย์', 'วันจันทร์', 'วันอังคาร', 'วันพุธ', 'วันพฤหัสบดี', 'วันศุกร์', 'วันเสาร์'];
 
-  // Helper date formatter DD/MM/YYYY (Buddhist Era YYYY+543 or standard)
-  const formatThaiDate = (dateStr: string) => {
+  // Helper date formatter DD/MM/YYYY with Day of week prefix (e.g. จ.24/8/2569)
+  const formatThaiDate = (dateStr: string, includeDayOfWeek: boolean = true) => {
     if (!dateStr) return '-';
-    const [y, m, d] = dateStr.split('-');
-    const thaiYear = parseInt(y, 10) + 543;
-    return `${d}/${m}/${thaiYear}`;
+    try {
+      const [y, m, d] = dateStr.split('-');
+      const parsedYear = parseInt(y, 10);
+      const parsedMonth = parseInt(m, 10) - 1;
+      const parsedDay = parseInt(d, 10);
+      const thaiYear = parsedYear + 543;
+      
+      const dateObj = new Date(parsedYear, parsedMonth, parsedDay);
+      const dayOfWeekIndex = dateObj.getDay();
+      const shortDay = daysOfWeekThai[dayOfWeekIndex] || '';
+
+      const dayClean = String(parsedDay);
+      const monthClean = String(parsedMonth + 1);
+
+      if (includeDayOfWeek && shortDay) {
+        return `${shortDay} ${dayClean}/${monthClean}/${thaiYear}`;
+      }
+      return `${dayClean}/${monthClean}/${thaiYear}`;
+    } catch {
+      return dateStr;
+    }
   };
 
   const isToday = (dateStr: string) => {
@@ -267,24 +286,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
     <div className="space-y-6">
       {/* Top Banner: Active Announcements Alert */}
       {announcements.length > 0 && (
-        <div className="bg-amber-50/70 border border-amber-200/80 rounded-3xl p-4 sm:p-5 shadow-xs relative overflow-hidden">
-          <div className="flex items-start space-x-3.5">
-            <div className="w-10 h-10 bg-amber-500 text-white rounded-2xl flex items-center justify-center shadow-xs shrink-0">
-              <Megaphone className="w-5 h-5" />
+        <div className="bg-amber-50/90 border-2 border-amber-300 rounded-3xl p-5 sm:p-6 shadow-sm relative overflow-hidden">
+          <div className="flex items-start space-x-4">
+            <div className="w-12 h-12 bg-amber-500 text-white rounded-2xl flex items-center justify-center shadow-md shrink-0 ring-4 ring-amber-100">
+              <Megaphone className="w-6 h-6" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center space-x-2">
-                <span className="text-[10px] font-bold text-amber-900 uppercase tracking-wider bg-amber-200/80 px-2.5 py-0.5 rounded-md">
-                  Announcement
+              <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                <span className="text-xs font-bold text-amber-950 uppercase tracking-wider bg-amber-200/90 px-3 py-0.5 rounded-lg border border-amber-300">
+                  📢 ประกาศด่วน / กิจกรรมสำคัญ
                 </span>
-                <span className="text-xs text-amber-700 font-medium">
-                  {formatThaiDate(announcements[0].date)}
+                <span className="text-sm font-bold text-amber-900 bg-amber-100/80 px-3 py-0.5 rounded-lg border border-amber-200">
+                  {formatThaiDate(announcements[0].date, true)}
                 </span>
               </div>
-              <h2 className="text-sm font-bold text-slate-800 mt-1">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
                 {announcements[0].title}
               </h2>
-              <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">
+              <p className="text-sm text-slate-700 mt-1 leading-relaxed font-normal">
                 {announcements[0].details}
               </p>
             </div>

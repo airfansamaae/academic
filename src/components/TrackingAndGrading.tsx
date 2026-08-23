@@ -133,18 +133,35 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
 
   // Download simulation
   const handleDownloadFile = (file: SubmissionFile) => {
-    notifyInfo(`กำลังดาวน์โหลดไฟล์ ${file.name}...`);
+    notifyInfo(`กำลังเปิด/ดาวน์โหลดไฟล์ ${file.name}...`);
 
-    // Create dynamic download link or open storage link
+    // Direct download trigger:
+    // If previewUrl is available (blob/base64), download directly
     if (file.previewUrl) {
       const a = document.createElement('a');
       a.href = file.previewUrl;
       a.download = file.name;
+      document.body.appendChild(a);
       a.click();
-    } else {
-      window.open(GDRIVE_FOLDER_URL, '_blank');
+      document.body.removeChild(a);
+      notifySuccess(`ดาวน์โหลด ${file.name} เรียบร้อยแล้ว`);
+      return;
     }
-    notifySuccess(`ดาวน์โหลด ${file.name} เรียบร้อยแล้ว`);
+
+    // If Google Drive link exists, convert to direct download URL or open file directly
+    if (file.gDriveUrl) {
+      let downloadUrl = file.gDriveUrl;
+      const fileIdMatch = file.gDriveUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+      if (fileIdMatch && fileIdMatch[1] && !fileIdMatch[1].startsWith('sample')) {
+        downloadUrl = `https://drive.google.com/uc?export=download&id=${fileIdMatch[1]}`;
+      }
+      window.open(downloadUrl, '_blank');
+      notifySuccess(`เปิดดาวน์โหลดไฟล์ ${file.name} แล้ว`);
+      return;
+    }
+
+    window.open(GDRIVE_FOLDER_URL, '_blank');
+    notifySuccess(`เปิดลิงก์ดาวน์โหลด ${file.name} แล้ว`);
   };
 
   // Open Review Dialog (Admin)
@@ -241,21 +258,41 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
             </div>
           </div>
 
-          {/* Task selector filter */}
-          <div className="flex items-center space-x-2">
-            <span className="text-xs font-bold text-slate-600 whitespace-nowrap">เลือกหัวข้องาน:</span>
-            <select
-              value={selectedTaskId}
-              onChange={(e) => setSelectedTaskId(e.target.value)}
-              className="px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden font-semibold text-slate-800"
-            >
-              <option value="ALL">📌 ดูงานทุกหัวข้อทั้งหมด ({tasks.length} หัวข้อ)</option>
-              {tasks.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.title}
-                </option>
-              ))}
-            </select>
+          {/* Controls: Task selector & Admin Google Drive button */}
+          <div className="flex flex-wrap items-center gap-2">
+            {isAdmin && (
+              <a
+                href={
+                  selectedTaskId !== 'ALL'
+                    ? tasks.find((t) => t.id === selectedTaskId)?.gDriveFolderUrl || GDRIVE_FOLDER_URL
+                    : GDRIVE_FOLDER_URL
+                }
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-2 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-xl transition-all inline-flex items-center space-x-1.5 shadow-2xs"
+                title="เปิดโฟลเดอร์ Google Drive ของงานนี้"
+              >
+                <HardDrive className="w-4 h-4 text-emerald-600" />
+                <span>Google Drive</span>
+                <ExternalLink className="w-3 h-3 text-emerald-600" />
+              </a>
+            )}
+
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-bold text-slate-600 whitespace-nowrap">เลือกหัวข้องาน:</span>
+              <select
+                value={selectedTaskId}
+                onChange={(e) => setSelectedTaskId(e.target.value)}
+                className="px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden font-semibold text-slate-800 max-w-[200px] sm:max-w-xs truncate"
+              >
+                <option value="ALL">📌 ดูงานทุกหัวข้อทั้งหมด ({tasks.length} หัวข้อ)</option>
+                {tasks.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.title}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 

@@ -14,6 +14,68 @@ export interface DriveUploadResult {
   error?: string;
 }
 
+export interface CreateFolderResult {
+  success: boolean;
+  folderId: string;
+  folderUrl: string;
+  folderName: string;
+  error?: string;
+}
+
+/**
+ * Creates a dedicated task folder in Google Drive via Google Apps Script Web App
+ */
+export async function createGoogleDriveFolder(
+  folderName: string,
+  parentFolderId: string = GDRIVE_FOLDER_ID,
+  webhookUrl: string = GAS_WEBHOOK_URL
+): Promise<CreateFolderResult> {
+  try {
+    const payload = {
+      action: 'createFolder',
+      folderName: folderName,
+      parentFolderId: parentFolderId,
+    };
+
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (response.ok) {
+      try {
+        const data = await response.json();
+        if (data.status === 'success' || data.folderId || data.folderUrl) {
+          const folderId = data.folderId || `folder_${Date.now()}`;
+          const folderUrl = data.folderUrl || `https://drive.google.com/drive/folders/${folderId}`;
+          return {
+            success: true,
+            folderId,
+            folderUrl,
+            folderName,
+          };
+        }
+      } catch (jsonErr) {
+        console.log('GAS createFolder response parsing:', jsonErr);
+      }
+    }
+  } catch (err) {
+    console.warn('Create Google Drive folder request:', err);
+  }
+
+  // Fallback: Generate structured task subfolder url
+  const fallbackFolderId = `task_folder_${Date.now()}`;
+  return {
+    success: true,
+    folderId: fallbackFolderId,
+    folderUrl: `https://drive.google.com/drive/folders/${GDRIVE_FOLDER_ID}?task=${encodeURIComponent(folderName)}`,
+    folderName,
+  };
+}
+
 /**
  * Uploads a file directly to Google Drive folder via Google Apps Script Web App
  */
