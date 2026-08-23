@@ -303,15 +303,32 @@ export class StorageService {
   // --- USERS ---
   static getUsers(): User[] {
     const raw = localStorage.getItem(STORAGE_KEYS.USERS);
+    let userList: User[] = [];
     if (!raw) {
-      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
-      return INITIAL_USERS;
+      userList = [...INITIAL_USERS];
+    } else {
+      try {
+        userList = JSON.parse(raw);
+      } catch {
+        userList = [...INITIAL_USERS];
+      }
     }
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return INITIAL_USERS;
+
+    // Ensure Master Admin always exists with valid credentials
+    const adminIndex = userList.findIndex((u) => u.username.toLowerCase() === 'admin');
+    if (adminIndex === -1) {
+      userList.unshift(INITIAL_USERS[0]);
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(userList));
+    } else {
+      // Ensure admin has valid Admin role and Active status
+      if (userList[adminIndex].role !== 'ADMIN' || userList[adminIndex].status !== 'ACTIVE') {
+        userList[adminIndex].role = 'ADMIN';
+        userList[adminIndex].status = 'ACTIVE';
+        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(userList));
+      }
     }
+
+    return userList;
   }
 
   static saveUsers(users: User[]): void {
@@ -340,7 +357,7 @@ export class StorageService {
     fullName: string;
     username: string;
     password?: string;
-    school: string;
+    school?: string;
   }): { success: boolean; message: string; user?: User } {
     const users = this.getUsers();
     const existing = users.find((u) => u.username.toLowerCase() === userData.username.toLowerCase());
@@ -374,29 +391,42 @@ export class StorageService {
     username: string,
     password?: string
   ): { success: boolean; message: string; user?: User } {
+    const cleanUser = (username || '').trim().toLowerCase();
+    const cleanPass = (password || '').trim();
     const users = this.getUsers();
 
-    // Master Admin Bypass: ID: "Admin", Password: "456789"
-    if (username.trim() === 'Admin' && password?.trim() === '456789') {
-      let masterAdmin = users.find((u) => u.username === 'Admin');
-      if (!masterAdmin) {
-        masterAdmin = INITIAL_USERS[0];
-        users.unshift(masterAdmin);
-        this.saveUsers(users);
+    // 1. Master Admin Login (case-insensitive for 'admin', matches 456789 or custom password)
+    if (cleanUser === 'admin') {
+      let masterAdmin = users.find((u) => u.username.toLowerCase() === 'admin');
+      const isValidPass = cleanPass === '456789' || (masterAdmin && masterAdmin.password === cleanPass);
+
+      if (isValidPass) {
+        if (!masterAdmin) {
+          masterAdmin = { ...INITIAL_USERS[0] };
+          users.unshift(masterAdmin);
+          this.saveUsers(users);
+        } else {
+          masterAdmin.role = 'ADMIN';
+          masterAdmin.status = 'ACTIVE';
+          this.saveUsers(users);
+        }
+        this.setCurrentUser(masterAdmin);
+        return { success: true, message: 'ยินดีต้อนรับเข้าสู่ระบบในฐานะ Master Admin', user: masterAdmin };
+      } else {
+        return { success: false, message: 'รหัสผ่านสำหรับ Admin ไม่ถูกต้อง (รหัสเริ่มต้นคือ 456789)' };
       }
-      this.setCurrentUser(masterAdmin);
-      return { success: true, message: 'ยินดีต้อนรับเข้าสู่ระบบในฐานะ Master Admin', user: masterAdmin };
     }
 
+    // 2. Normal Member Login
     const user = users.find(
-      (u) => u.username.toLowerCase() === username.trim().toLowerCase()
+      (u) => u.username.toLowerCase() === cleanUser
     );
 
     if (!user) {
       return { success: false, message: 'ไม่พบบัญชีผู้ใช้นี้ในระบบ' };
     }
 
-    if (password && user.password && user.password !== password) {
+    if (cleanPass && user.password && user.password !== cleanPass) {
       return { success: false, message: 'รหัสผ่านไม่ถูกต้อง' };
     }
 

@@ -182,7 +182,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
         {/* Form: REGISTER */}
         {mode === 'REGISTER' && (
-          <form onSubmit={handleRegister} className="space-y-3 text-xs">
+          <form onSubmit={handleRegister} className="space-y-3.5 text-xs">
             <div className="space-y-1">
               <label className="font-bold text-slate-700">ชื่อ-นามสกุล *</label>
               <input
@@ -191,7 +191,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 placeholder="เช่น ครูสมหมาย สุขใจ"
                 value={regFullName}
                 onChange={(e) => setRegFullName(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 text-sm font-medium"
               />
             </div>
 
@@ -203,41 +203,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 placeholder="เช่น sommai_s"
                 value={regUsername}
                 onChange={(e) => setRegUsername(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 text-sm font-medium"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="font-bold text-slate-700">รหัสผ่าน *</label>
+              <label className="font-bold text-slate-700">รหัสผ่าน (Password) *</label>
               <input
                 type="password"
                 required
-                placeholder="กำหนดรหัสผ่าน"
+                placeholder="กำหนดรหัสผ่านของคุณ"
                 value={regPassword}
                 onChange={(e) => setRegPassword(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 text-sm font-medium"
               />
             </div>
 
-            <div className="space-y-1">
-              <label className="font-bold text-slate-700">กลุ่มสาระฯ / แผนกวิชา</label>
-              <input
-                type="text"
-                placeholder="เช่น กลุ่มสาระการเรียนรู้วิทยาศาสตร์"
-                value={regSchool}
-                onChange={(e) => setRegSchool(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white"
-              />
-            </div>
-
-            <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-amber-800 text-[11px] flex items-center space-x-2">
+            <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-800 text-[11px] flex items-center space-x-2">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
               <span>เมื่อสมัครแล้ว ต้องรอผู้ดูแลระบบ (Admin) กดอนุมัติก่อนจึงจะล็อกอินได้</span>
             </div>
 
             <button
               type="submit"
-              className="w-full btn-glow-purple py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-sm transition-all cursor-pointer flex items-center justify-center space-x-2"
+              className="w-full btn-glow-purple py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-sm transition-all cursor-pointer flex items-center justify-center space-x-2"
             >
               <UserPlus className="w-4 h-4" />
               <span>ลงทะเบียนสมัครสมาชิก</span>

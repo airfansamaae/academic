@@ -7,12 +7,12 @@ import {
   Users,
   CheckCircle2,
   Trash2,
-  HardDrive,
-  Database,
-  Upload,
+  KeyRound,
   Shield,
   Clock,
   Sparkles,
+  Camera,
+  Save,
 } from 'lucide-react';
 import { User, SystemSettings } from '../types';
 import { StorageService } from '../services/storage';
@@ -43,102 +43,116 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const isAdmin = currentUser.role === 'ADMIN';
 
-  // Tabs: 'PROFILE' | 'SCHOOL' | 'MEMBERS'
-  const [activeTab, setActiveTab] = useState<'PROFILE' | 'SCHOOL' | 'MEMBERS'>('PROFILE');
+  // Tabs: 'PROFILE' | 'PASSWORD' | 'SCHOOL' | 'MEMBERS'
+  const [activeTab, setActiveTab] = useState<'PROFILE' | 'PASSWORD' | 'SCHOOL' | 'MEMBERS'>('PROFILE');
 
-  // Profile Form
-  const [fullName, setFullName] = useState(currentUser.fullName);
-  const [school, setSchool] = useState(currentUser.school);
-  const [avatarUrl, setAvatarUrl] = useState(currentUser.avatarUrl);
+  // Profile Form State
+  const [fullName, setFullName] = useState(currentUser.fullName || '');
+  const [school, setSchool] = useState(currentUser.school || '');
+  const [avatarUrl, setAvatarUrl] = useState(currentUser.avatarUrl || '');
+
+  // Password Form State
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  // School & Footer Form (Admin)
-  const [schoolName, setSchoolName] = useState(settings.schoolName);
-  const [schoolLogoUrl, setSchoolLogoUrl] = useState(settings.schoolLogoUrl);
-  const [footerText, setFooterText] = useState(settings.footerText);
-  const [gDriveFolderId, setGDriveFolderId] = useState(settings.gDriveFolderId || '1oOywsmTzdy1CMJDQuzNk9yJhH0lwWVZu');
-  const [gasWebhookUrl, setGasWebhookUrl] = useState(
-    settings.gasWebhookUrl ||
-      'https://script.google.com/macros/s/AKfycbzve6nmcAMloypZThIb5aRyKfLd3NJCeoddYU8NToVMCXKltjG9WWEI6yA-tetESAt26w/exec'
-  );
+  // School & Footer Form State (Admin)
+  const [schoolName, setSchoolName] = useState(settings.schoolName || '');
+  const [schoolLogoUrl, setSchoolLogoUrl] = useState(settings.schoolLogoUrl || '');
+  const [footerText, setFooterText] = useState(settings.footerText || '');
 
-  // Handle Logo Upload simulation
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        setSchoolLogoUrl(reader.result as string);
-        notifySuccess('อัปโหลดไฟล์โลโก้โรงเรียนสำเร็จ');
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  // Handle Avatar Upload simulation
+  // Handle Avatar Upload
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
       reader.onload = () => {
-        setAvatarUrl(reader.result as string);
-        notifySuccess('อัปโหลดรูปโปรไฟล์สำเร็จ');
+        if (typeof reader.result === 'string') {
+          setAvatarUrl(reader.result);
+          notifySuccess('อัปโหลดรูปภาพโปรไฟล์เรียบร้อยแล้ว');
+        }
       };
       reader.readAsDataURL(file);
     }
   };
 
-  // Save Profile
+  // Handle Logo Upload
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          setSchoolLogoUrl(reader.result);
+          notifySuccess('อัปโหลดโลโก้โรงเรียนเรียบร้อยแล้ว');
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // 1. Save Profile (No mandatory field blocks)
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
-    if (newPassword && newPassword !== confirmPassword) {
+    const updatedUser: User = {
+      ...currentUser,
+      fullName: fullName.trim() || currentUser.fullName || 'ผู้ใช้งาน',
+      school: school.trim() || currentUser.school || 'โรงเรียนวิชาการวิทยาคาร',
+      avatarUrl: avatarUrl || currentUser.avatarUrl,
+    };
+
+    StorageService.updateUser(updatedUser);
+    notifySuccess('บันทึกข้อมูลส่วนตัวเรียบร้อยแล้ว ✨');
+    onRefreshData();
+  };
+
+  // 2. Save Password
+  const handleSavePassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword.trim()) {
+      notifyError('กรุณากรอกรหัสผ่านใหม่');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
       notifyError('รหัสผ่านใหม่และการยืนยันรหัสผ่านไม่ตรงกัน');
       return;
     }
 
-    const updatedUser = {
+    const updatedUser: User = {
       ...currentUser,
-      fullName: fullName.trim(),
-      school: school.trim(),
-      avatarUrl: avatarUrl.trim(),
-      ...(newPassword ? { password: newPassword.trim() } : {}),
+      password: newPassword.trim(),
     };
 
     StorageService.updateUser(updatedUser);
-    notifySuccess('บันทึกข้อมูลโปรไฟล์และรหัสผ่านเรียบร้อยแล้ว');
+    notifySuccess('เปลี่ยนรหัสผ่านใหม่เรียบร้อยแล้ว 🔒');
     setNewPassword('');
     setConfirmPassword('');
     onRefreshData();
   };
 
-  // Save School & Footer Settings
+  // 3. Save School & Footer Settings (No mandatory field blocks & No visible webhook url clutter)
   const handleSaveSchoolSettings = (e: React.FormEvent) => {
     e.preventDefault();
     StorageService.saveSettings({
       ...settings,
-      schoolName: schoolName.trim(),
-      schoolLogoUrl: schoolLogoUrl.trim(),
-      footerText: footerText.trim(),
-      gDriveFolderId: gDriveFolderId.trim() || '1oOywsmTzdy1CMJDQuzNk9yJhH0lwWVZu',
-      gasWebhookUrl: gasWebhookUrl.trim(),
+      schoolName: schoolName.trim() || settings.schoolName || 'โรงเรียนวิชาการวิทยาคาร',
+      schoolLogoUrl: schoolLogoUrl || settings.schoolLogoUrl,
+      footerText: footerText.trim() || settings.footerText,
     });
-    notifySuccess('บันทึกข้อมูลสถานศึกษาและการเชื่อมต่อ Google Drive สำเร็จ');
+    notifySuccess('บันทึกข้อมูลสถานศึกษาและข้อความ Footer เรียบร้อยแล้ว ✨');
     onRefreshData();
   };
 
-  // Admin: Approve Member
+  // 4. Admin Member Approvals & Deletion
   const handleApprove = (userId: string) => {
     StorageService.approveUser(userId);
     notifySuccess('อนุมัติการเข้าใช้งานของสมาชิกเรียบร้อยแล้ว');
     onRefreshData();
   };
 
-  // Admin: Delete User
   const handleDeleteUser = async (userId: string) => {
     const ok = await confirmDialog(
       'ยืนยันการลบผู้ใช้นี้?',
-      'บัญชีผู้ใช้และสิทธิ์การเข้าใช้งานจะถูกลบ'
+      'บัญชีผู้ใช้และสิทธิ์การเข้าใช้งานจะถูกลบออกจากระบบ'
     );
     if (ok) {
       StorageService.deleteUser(userId);
@@ -163,56 +177,68 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <h2 className="text-base font-bold text-slate-800">
                 System Settings & Management
               </h2>
-              <p className="text-xs text-slate-400">จัดการข้อมูลส่วนตัว สถานศึกษา และสิทธิ์สมาชิก</p>
+              <p className="text-xs text-slate-400">จัดการข้อมูลส่วนตัว รหัสผ่าน และการตั้งค่าระบบ</p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex items-center space-x-2 py-3 border-b border-slate-100 overflow-x-auto text-xs font-bold">
+        <div className="flex items-center space-x-2 py-3 border-b border-slate-100 overflow-x-auto text-xs font-bold scrollbar-none">
           <button
             onClick={() => setActiveTab('PROFILE')}
-            className={`px-3.5 py-1.5 rounded-xl transition-all cursor-pointer flex items-center space-x-1.5 shrink-0 ${
+            className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center space-x-1.5 shrink-0 ${
               activeTab === 'PROFILE'
                 ? 'bg-purple-50 text-purple-700 border border-purple-200 shadow-2xs'
                 : 'text-slate-600 hover:bg-slate-50'
             }`}
           >
             <UserIcon className="w-4 h-4" />
-            <span>1. ข้อมูลส่วนตัว & โปรไฟล์</span>
+            <span>1. ข้อมูลส่วนตัว</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('PASSWORD')}
+            className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center space-x-1.5 shrink-0 ${
+              activeTab === 'PASSWORD'
+                ? 'bg-purple-50 text-purple-700 border border-purple-200 shadow-2xs'
+                : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <KeyRound className="w-4 h-4" />
+            <span>2. เปลี่ยนรหัสผ่าน</span>
           </button>
 
           {isAdmin && (
             <>
               <button
                 onClick={() => setActiveTab('SCHOOL')}
-                className={`px-3.5 py-1.5 rounded-xl transition-all cursor-pointer flex items-center space-x-1.5 shrink-0 ${
+                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center space-x-1.5 shrink-0 ${
                   activeTab === 'SCHOOL'
                     ? 'bg-purple-50 text-purple-700 border border-purple-200 shadow-2xs'
                     : 'text-slate-600 hover:bg-slate-50'
                 }`}
               >
                 <School className="w-4 h-4" />
-                <span>2. โลโก้ & ข้อมูลโรงเรียน & Footer</span>
+                <span>3. ข้อมูลโรงเรียน & Footer</span>
               </button>
 
               <button
                 onClick={() => setActiveTab('MEMBERS')}
-                className={`px-3.5 py-1.5 rounded-xl transition-all cursor-pointer flex items-center space-x-1.5 shrink-0 ${
+                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center space-x-1.5 shrink-0 ${
                   activeTab === 'MEMBERS'
                     ? 'bg-purple-50 text-purple-700 border border-purple-200 shadow-2xs'
                     : 'text-slate-600 hover:bg-slate-50'
                 }`}
               >
                 <Users className="w-4 h-4" />
-                <span>3. จัดการสมาชิก</span>
+                <span>4. จัดการสมาชิก</span>
                 {pendingUsers.length > 0 && (
                   <span className="ml-1 bg-amber-500 text-white px-1.5 py-0.2 rounded-full text-[10px]">
                     {pendingUsers.length}
@@ -225,83 +251,57 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Modal Body */}
         <div className="flex-1 overflow-y-auto py-4 space-y-4">
-          {/* TAB 1: Profile Settings */}
+          {/* TAB 1: Profile Settings (No URL input, Only Choose File) */}
           {activeTab === 'PROFILE' && (
             <form onSubmit={handleSaveProfile} className="space-y-4 text-xs">
-              <div className="flex items-center space-x-4 p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200/80">
-                <img
-                  src={avatarUrl}
-                  alt="Avatar"
-                  className="w-14 h-14 rounded-full object-cover ring-2 ring-purple-500/30"
-                  onError={(e) => {
-                    (e.currentTarget as HTMLImageElement).src =
-                      'https://api.dicebear.com/7.x/bottts/svg?seed=user';
-                  }}
-                />
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700 block">อัปโหลดรูปโปรไฟล์ผู้ใช้</label>
+              <div className="flex items-center space-x-4 p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80">
+                <div className="relative group shrink-0">
+                  <img
+                    src={avatarUrl || 'https://api.dicebear.com/7.x/bottts/svg?seed=user'}
+                    alt="Avatar"
+                    className="w-16 h-16 rounded-full object-cover ring-2 ring-purple-500/30 shadow-xs"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src =
+                        'https://api.dicebear.com/7.x/bottts/svg?seed=user';
+                    }}
+                  />
+                  <div className="absolute inset-0 bg-slate-900/30 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Camera className="w-5 h-5 text-white" />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 flex-1">
+                  <label className="font-bold text-slate-700 block">อัปโหลดรูปภาพโปรไฟล์</label>
                   <input
                     type="file"
                     accept="image/*"
                     onChange={handleAvatarUpload}
-                    className="text-xs text-slate-500 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-purple-100 file:text-purple-700 hover:file:bg-purple-200 cursor-pointer"
+                    className="text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-purple-100 file:text-purple-700 hover:file:bg-purple-200 cursor-pointer"
                   />
+                  <p className="text-[11px] text-slate-400">รองรับไฟล์รูปภาพ PNG, JPG, JPEG</p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-700">ชื่อ-นามสกุล *</label>
+                  <label className="font-bold text-slate-700">ชื่อ-นามสกุล</label>
                   <input
                     type="text"
-                    required
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white text-xs"
+                    placeholder="เช่น ครูสมหมาย สุขใจ"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white text-xs font-medium"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-700">กลุ่มสาระฯ / สังกัด</label>
+                  <label className="font-bold text-slate-700">กลุ่มสาระฯ / แผนก / สังกัด</label>
                   <input
                     type="text"
                     value={school}
                     onChange={(e) => setSchool(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white text-xs"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-slate-700">Avatar Image URL (หรือใช้ลิงก์ภาพ)</label>
-                <input
-                  type="text"
-                  value={avatarUrl}
-                  onChange={(e) => setAvatarUrl(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-hidden text-xs"
-                />
-              </div>
-
-              {/* Change Password Section */}
-              <div className="p-3 bg-purple-50/50 rounded-2xl border border-purple-100 space-y-2.5">
-                <div className="flex items-center space-x-1.5 font-bold text-purple-900">
-                  <Shield className="w-4 h-4 text-purple-600" />
-                  <span>เปลี่ยนรหัสผ่าน (หากต้องการเปลี่ยน)</span>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <input
-                    type="password"
-                    placeholder="รหัสผ่านใหม่"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-purple-200 rounded-xl outline-hidden text-xs"
-                  />
-                  <input
-                    type="password"
-                    placeholder="ยืนยันรหัสผ่านใหม่"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-purple-200 rounded-xl outline-hidden text-xs"
+                    placeholder="เช่น กลุ่มสาระการเรียนรู้วิทยาศาสตร์"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white text-xs font-medium"
                   />
                 </div>
               </div>
@@ -309,108 +309,139 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="pt-2 flex justify-end">
                 <button
                   type="submit"
-                  className="btn-glow-purple px-5 py-2 font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl"
+                  className="btn-glow-purple px-5 py-2.5 font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition-all cursor-pointer flex items-center space-x-2 text-xs"
                 >
-                  บันทึกข้อมูลโปรไฟล์
+                  <Save className="w-4 h-4" />
+                  <span>บันทึกข้อมูลส่วนตัว</span>
                 </button>
               </div>
             </form>
           )}
 
-          {/* TAB 2: School & Footer (Admin only) */}
-          {activeTab === 'SCHOOL' && isAdmin && (
-            <form onSubmit={handleSaveSchoolSettings} className="space-y-4 text-xs">
-              <div className="flex items-center space-x-4 p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200/80">
-                <img
-                  src={schoolLogoUrl}
-                  alt="School Logo"
-                  className="w-14 h-14 rounded-xl object-cover ring-2 ring-purple-500/30"
-                  onError={(e) => {
-                    (e.target as HTMLElement).style.display = 'none';
-                  }}
-                />
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700 block">อัปโหลดไฟล์โลโก้โรงเรียน</label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleLogoUpload}
-                    className="text-xs text-slate-500 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-purple-100 file:text-purple-700 hover:file:bg-purple-200 cursor-pointer"
-                  />
+          {/* TAB 2: Change Password (Dedicated Page) */}
+          {activeTab === 'PASSWORD' && (
+            <form onSubmit={handleSavePassword} className="space-y-4 text-xs">
+              <div className="p-4 bg-purple-50/60 rounded-2xl border border-purple-100 flex items-start space-x-3">
+                <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+                  <KeyRound className="w-4 h-4" />
                 </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-slate-700">ชื่อโรงเรียน / หน่วยงาน *</label>
-                <input
-                  type="text"
-                  required
-                  value={schoolName}
-                  onChange={(e) => setSchoolName(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white text-xs"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-slate-700">ข้อความ Footer ด้านล่างของเว็บไซต์ *</label>
-                <textarea
-                  rows={2}
-                  required
-                  value={footerText}
-                  onChange={(e) => setFooterText(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white text-xs"
-                />
-              </div>
-
-              {/* Google Drive Integration Configuration */}
-              <div className="p-3.5 bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-3">
-                <div className="flex items-center space-x-2 font-bold text-slate-700">
-                  <HardDrive className="w-4 h-4 text-purple-600" />
-                  <span>การเชื่อมต่อ Google Drive อัตโนมัติ (Apps Script Webhook):</span>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-semibold text-slate-600">Google Drive Folder ID</label>
-                  <input
-                    type="text"
-                    value={gDriveFolderId}
-                    onChange={(e) => setGDriveFolderId(e.target.value)}
-                    placeholder="1oOywsmTzdy1CMJDQuzNk9yJhH0lwWVZu"
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl outline-hidden text-xs font-mono"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-semibold text-slate-600">Google Apps Script Webhook URL</label>
-                  <input
-                    type="text"
-                    value={gasWebhookUrl}
-                    onChange={(e) => setGasWebhookUrl(e.target.value)}
-                    placeholder="https://script.google.com/macros/s/.../exec"
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl outline-hidden text-xs font-mono text-slate-700"
-                  />
-                </div>
-
-                <div className="p-2.5 bg-emerald-50 rounded-xl border border-emerald-200 text-[11px] text-emerald-800 font-medium space-y-1">
-                  <p className="flex items-center space-x-1.5 font-bold">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span>เชื่อมต่อ Google Drive สำเร็จ: ไฟล์งานที่อัปโหลดจะถูกส่งไปยังไดรฟ์โดยตรง</span>
+                <div>
+                  <p className="font-bold text-purple-950 text-xs">เปลี่ยนรหัสผ่านเพื่อความปลอดภัย</p>
+                  <p className="text-[11px] text-purple-700/80">
+                    กำหนดรหัสผ่านใหม่ที่คุณต้องการใช้ในการเข้าสู่ระบบครั้งถัดไป
                   </p>
                 </div>
               </div>
 
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700">รหัสผ่านใหม่ (New Password) *</label>
+                  <input
+                    type="password"
+                    placeholder="กำหนดรหัสผ่านใหม่"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:ring-2 focus:ring-purple-500/20 text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700">ยืนยันรหัสผ่านใหม่อีกครั้ง (Confirm Password) *</label>
+                  <input
+                    type="password"
+                    placeholder="พิมพ์รหัสผ่านใหม่อีกครั้ง"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:ring-2 focus:ring-purple-500/20 text-xs"
+                  />
+                </div>
+              </div>
+
               <div className="pt-2 flex justify-end">
                 <button
                   type="submit"
-                  className="btn-glow-purple px-5 py-2 font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl"
+                  className="btn-glow-purple px-5 py-2.5 font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition-all cursor-pointer flex items-center space-x-2 text-xs"
                 >
-                  บันทึกข้อมูลสถานศึกษา
+                  <KeyRound className="w-4 h-4" />
+                  <span>บันทึกรหัสผ่านใหม่</span>
                 </button>
               </div>
             </form>
           )}
 
-          {/* TAB 3: Member Approval Management (Admin only) */}
+          {/* TAB 3: School & Footer (Admin only, Cleaned UI) */}
+          {activeTab === 'SCHOOL' && isAdmin && (
+            <form onSubmit={handleSaveSchoolSettings} className="space-y-4 text-xs">
+              <div className="flex items-center space-x-4 p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80">
+                {schoolLogoUrl ? (
+                  <img
+                    src={schoolLogoUrl}
+                    alt="School Logo"
+                    className="w-16 h-16 rounded-2xl object-cover ring-2 ring-purple-500/30 shadow-xs shrink-0"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLElement).style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <div className="w-16 h-16 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xl shrink-0">
+                    <School className="w-8 h-8" />
+                  </div>
+                )}
+                <div className="space-y-1.5 flex-1">
+                  <label className="font-bold text-slate-700 block">อัปโหลดไฟล์ภาพโลโก้โรงเรียน</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleLogoUpload}
+                    className="text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-purple-100 file:text-purple-700 hover:file:bg-purple-200 cursor-pointer"
+                  />
+                  <p className="text-[11px] text-slate-400">จะแสดงผลที่แถบเมนูด้านบนและส่วนหัวของเอกสาร</p>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700">ชื่อโรงเรียน / สถานศึกษา / หน่วยงาน</label>
+                <input
+                  type="text"
+                  value={schoolName}
+                  onChange={(e) => setSchoolName(e.target.value)}
+                  placeholder="เช่น โรงเรียนวิชาการวิทยาคาร"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white text-xs font-medium"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700">ข้อความส่วนท้าย (Footer Text)</label>
+                <textarea
+                  rows={2}
+                  value={footerText}
+                  onChange={(e) => setFooterText(e.target.value)}
+                  placeholder="เช่น ระบบบริหารจัดการงานวิชาการ มอบหมายงานและส่งงาน © 2026 สงวนลิขสิทธิ์ทุกประการ"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white text-xs font-medium"
+                />
+              </div>
+
+              {/* Seamless Backend Storage Note */}
+              <div className="p-3 bg-emerald-50/80 rounded-2xl border border-emerald-200/80 flex items-center space-x-2.5 text-emerald-800">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+                <span className="text-[11px] font-medium">
+                  ระบบจัดเก็บไฟล์ Google Drive และฐานข้อมูลหลังบ้านเชื่อมต่อพร้อมใช้งานสมบูรณ์
+                </span>
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <button
+                  type="submit"
+                  className="btn-glow-purple px-5 py-2.5 font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition-all cursor-pointer flex items-center space-x-2 text-xs"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>บันทึกข้อมูลสถานศึกษา</span>
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* TAB 4: Member Approval Management (Admin only) */}
           {activeTab === 'MEMBERS' && isAdmin && (
             <div className="space-y-5 text-xs">
               {/* Pending Approvals */}
@@ -423,7 +454,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </div>
 
                 {pendingUsers.length === 0 ? (
-                  <p className="text-slate-400 italic p-3 bg-slate-50/80 rounded-2xl border border-dashed text-center">
+                  <p className="text-slate-400 italic p-4 bg-slate-50/80 rounded-2xl border border-dashed text-center">
                     ไม่มีผู้ใช้รอการอนุมัติ
                   </p>
                 ) : (
@@ -437,7 +468,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                           <img
                             src={u.avatarUrl}
                             alt=""
-                            className="w-8 h-8 rounded-full object-cover"
+                            className="w-8 h-8 rounded-full object-cover ring-1 ring-amber-300"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).src =
+                                'https://api.dicebear.com/7.x/bottts/svg?seed=user';
+                            }}
                           />
                           <div>
                             <p className="font-bold text-slate-900">{u.fullName}</p>
@@ -484,7 +519,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <img
                           src={u.avatarUrl}
                           alt=""
-                          className="w-7 h-7 rounded-full object-cover"
+                          className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-200"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).src =
+                              'https://api.dicebear.com/7.x/bottts/svg?seed=user';
+                          }}
                         />
                         <div>
                           <div className="flex items-center space-x-1.5">
@@ -501,7 +540,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
                       </div>
 
-                      {u.username !== 'Admin' && (
+                      {u.username.toLowerCase() !== 'admin' && (
                         <button
                           onClick={() => handleDeleteUser(u.id)}
                           className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl cursor-pointer"

@@ -34,9 +34,20 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Brand & School Logo (Geometric Balance style) */}
           <div className="flex items-center space-x-3 sm:space-x-4">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 bg-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-sm shrink-0">
-                A
-              </div>
+              {settings.schoolLogoUrl ? (
+                <img
+                  src={settings.schoolLogoUrl}
+                  alt={settings.schoolName}
+                  className="w-9 h-9 rounded-xl object-cover ring-1 ring-slate-200 shadow-xs shrink-0"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLElement).style.display = 'none';
+                  }}
+                />
+              ) : (
+                <div className="w-9 h-9 bg-purple-600 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-sm shrink-0">
+                  A
+                </div>
+              )}
               <div>
                 <div className="flex items-center space-x-1.5">
                   <h1 className="text-base sm:text-lg font-bold tracking-tight text-slate-800 leading-tight">
