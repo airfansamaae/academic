@@ -270,6 +270,96 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return list;
   }, [tasks, activeMembers, submissions, isAdmin]);
 
+  // Calculate upcoming 7-day alerts (Announcements + Tasks with due date in [0..7] days)
+  const upcomingAlerts = useMemo(() => {
+    const list: Array<{
+      id: string;
+      category: 'TASK' | 'ANNOUNCEMENT';
+      title: string;
+      details: string;
+      date: string;
+      diffDays: number;
+      item: Task | Announcement;
+      theme: 'RED' | 'YELLOW';
+    }> = [];
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // 1. Announcements within 0 to 7 days
+    announcements.forEach((ann) => {
+      if (!ann.date) return;
+      const [y, m, d] = ann.date.split('-').map(Number);
+      const annDate = new Date(y, m - 1, d);
+      annDate.setHours(0, 0, 0, 0);
+      const diffTime = annDate.getTime() - today.getTime();
+      const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+      // Auto-hide if past (diffDays < 0), only show 0..7 days
+      if (diffDays >= 0 && diffDays <= 7) {
+        list.push({
+          id: `ann-${ann.id}`,
+          category: 'ANNOUNCEMENT',
+          title: ann.title,
+          details: ann.details || 'ประกาศแจ้งเพื่อทราบสำหรับบุคลากรทุกคน',
+          date: ann.date,
+          diffDays,
+          item: ann,
+          theme: 'YELLOW',
+        });
+      }
+    });
+
+    // 2. Tasks with due date within 0 to 7 days
+    tasks.forEach((task) => {
+      if (!task.dueDate) return;
+      const [y, m, d] = task.dueDate.split('-').map(Number);
+      const taskDate = new Date(y, m - 1, d);
+      taskDate.setHours(0, 0, 0, 0);
+      const diffTime = taskDate.getTime() - today.getTime();
+      const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+      // Auto-hide if past (diffDays < 0), only show 0..7 days
+      if (diffDays >= 0 && diffDays <= 7) {
+        list.push({
+          id: `task-${task.id}`,
+          category: 'TASK',
+          title: task.title,
+          details: task.description || 'กำหนดส่งงานวิชาการ กรุณาเตรียมไฟล์และส่งงานก่อนครบกำหนดเวลา',
+          date: task.dueDate,
+          diffDays,
+          item: task,
+          theme: 'RED',
+        });
+      }
+    });
+
+    // Sort by diffDays ascending (closest first)
+    list.sort((a, b) => {
+      if (a.diffDays !== b.diffDays) return a.diffDays - b.diffDays;
+      return a.category === 'TASK' ? -1 : 1;
+    });
+
+    return list;
+  }, [announcements, tasks]);
+
+  const [currentAlertIndex, setCurrentAlertIndex] = useState(0);
+
+  // Safety check on index bounds
+  const activeAlert = upcomingAlerts[currentAlertIndex] || upcomingAlerts[0];
+
+  const handleNextAlert = () => {
+    if (upcomingAlerts.length > 0) {
+      setCurrentAlertIndex((prev) => (prev + 1) % upcomingAlerts.length);
+    }
+  };
+
+  const handlePrevAlert = () => {
+    if (upcomingAlerts.length > 0) {
+      setCurrentAlertIndex((prev) => (prev - 1 + upcomingAlerts.length) % upcomingAlerts.length);
+    }
+  };
+
   const handlePrevMonth = () => {
     setCurrentDate(new Date(year, month - 1, 1));
   };
@@ -284,28 +374,138 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Banner: Active Announcements Alert */}
-      {announcements.length > 0 && (
-        <div className="bg-amber-50/90 border-2 border-amber-300 rounded-3xl p-5 sm:p-6 shadow-sm relative overflow-hidden">
-          <div className="flex items-start space-x-4">
-            <div className="w-12 h-12 bg-amber-500 text-white rounded-2xl flex items-center justify-center shadow-md shrink-0 ring-4 ring-amber-100">
-              <Megaphone className="w-6 h-6" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                <span className="text-xs font-bold text-amber-950 uppercase tracking-wider bg-amber-200/90 px-3 py-0.5 rounded-lg border border-amber-300">
-                  📢 ประกาศด่วน / กิจกรรมสำคัญ
-                </span>
-                <span className="text-sm font-bold text-amber-900 bg-amber-100/80 px-3 py-0.5 rounded-lg border border-amber-200">
-                  {formatThaiDate(announcements[0].date, true)}
-                </span>
+      {/* Top Banner: 7-Day Upcoming Alert Carousel (Red = Task, Yellow = Announcement) */}
+      {upcomingAlerts.length > 0 && activeAlert && (
+        <div
+          className={`rounded-3xl p-5 sm:p-6 shadow-sm relative overflow-hidden transition-all duration-300 ${
+            activeAlert.theme === 'RED'
+              ? 'bg-rose-50/95 border-2 border-rose-300 ring-4 ring-rose-50/50'
+              : 'bg-amber-50/95 border-2 border-amber-300 ring-4 ring-amber-50/50'
+          }`}
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start space-x-4 flex-1 min-w-0">
+              {/* Category Icon */}
+              <div
+                className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-md shrink-0 ring-4 ${
+                  activeAlert.theme === 'RED'
+                    ? 'bg-rose-600 text-white ring-rose-100'
+                    : 'bg-amber-500 text-white ring-amber-100'
+                }`}
+              >
+                {activeAlert.category === 'TASK' ? (
+                  <Clock className="w-6 h-6 animate-pulse" />
+                ) : (
+                  <Megaphone className="w-6 h-6" />
+                )}
               </div>
-              <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
-                {announcements[0].title}
-              </h2>
-              <p className="text-sm text-slate-700 mt-1 leading-relaxed font-normal">
-                {announcements[0].details}
-              </p>
+
+              <div className="flex-1 min-w-0">
+                {/* Badges & Date */}
+                <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                  <span
+                    className={`text-xs font-bold uppercase tracking-wider px-3 py-0.5 rounded-lg border shadow-2xs ${
+                      activeAlert.theme === 'RED'
+                        ? 'bg-rose-600 text-white border-rose-700'
+                        : 'bg-amber-500 text-white border-amber-600'
+                    }`}
+                  >
+                    {activeAlert.category === 'TASK' ? '📝 งานที่ต้องส่ง (ด่วน)' : '📢 ประกาศแจ้งให้ทราบ'}
+                  </span>
+
+                  <span
+                    className={`text-sm font-bold px-3 py-0.5 rounded-lg border ${
+                      activeAlert.theme === 'RED'
+                        ? 'text-rose-950 bg-rose-100/90 border-rose-300'
+                        : 'text-amber-950 bg-amber-100/90 border-amber-300'
+                    }`}
+                  >
+                    {formatThaiDate(activeAlert.date, true)}
+                    {activeAlert.diffDays === 0
+                      ? ' (วันนี้!)'
+                      : activeAlert.diffDays === 1
+                      ? ' (พรุ่งนี้)'
+                      : ` (อีก ${activeAlert.diffDays} วัน)`}
+                  </span>
+
+                  {upcomingAlerts.length > 1 && (
+                    <span className="text-[11px] font-bold text-slate-500 bg-white/80 px-2 py-0.5 rounded-md border border-slate-200">
+                      รายการที่ {currentAlertIndex + 1}/{upcomingAlerts.length}
+                    </span>
+                  )}
+                </div>
+
+                {/* Title */}
+                <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight line-clamp-2">
+                  {activeAlert.title}
+                </h2>
+
+                {/* Details */}
+                <p className="text-xs sm:text-sm text-slate-700 mt-1 leading-relaxed line-clamp-2">
+                  {activeAlert.details}
+                </p>
+              </div>
+            </div>
+
+            {/* Controls & Action Button */}
+            <div className="flex items-center justify-between sm:justify-end gap-2.5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200/60">
+              {activeAlert.category === 'TASK' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onNavigateTab('ASSIGN_SUBMIT');
+                    if (onSelectTaskToSubmit && activeAlert.category === 'TASK') {
+                      onSelectTaskToSubmit(activeAlert.item as Task);
+                    }
+                  }}
+                  className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 active:scale-95 transition-all rounded-xl shadow-xs inline-flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>ไปที่หน้าส่งงาน</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {/* Slider Arrows (if > 1 items) */}
+              {upcomingAlerts.length > 1 && (
+                <div className="flex items-center space-x-1.5">
+                  <button
+                    type="button"
+                    onClick={handlePrevAlert}
+                    className="p-2 bg-white hover:bg-slate-100 text-slate-700 rounded-xl border border-slate-300 shadow-2xs transition-colors cursor-pointer"
+                    title="ประกาศ/งานก่อนหน้า"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+
+                  <div className="flex space-x-1 px-1">
+                    {upcomingAlerts.map((_, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setCurrentAlertIndex(idx)}
+                        className={`w-2.5 h-2.5 rounded-full transition-all cursor-pointer ${
+                          idx === currentAlertIndex
+                            ? activeAlert.theme === 'RED'
+                              ? 'bg-rose-600 w-5'
+                              : 'bg-amber-600 w-5'
+                            : 'bg-slate-300 hover:bg-slate-400'
+                        }`}
+                        title={`ไปที่รายการที่ ${idx + 1}`}
+                      />
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleNextAlert}
+                    className="p-2 bg-white hover:bg-slate-100 text-slate-700 rounded-xl border border-slate-300 shadow-2xs transition-colors cursor-pointer"
+                    title="ประกาศ/งานถัดไป (เลื่อนขวา)"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

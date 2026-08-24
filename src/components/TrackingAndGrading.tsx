@@ -1,11 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import {
   ClipboardCheck,
-  CheckCircle2,
-  AlertCircle,
   Download,
-  MessageSquare,
-  Sparkles,
   Search,
   Filter,
   FileText,
@@ -14,18 +10,21 @@ import {
   Trash2,
   Edit3,
   ExternalLink,
-  Star,
-  Check,
-  X,
-  UserCheck,
-  UserX,
   HardDrive,
+  ChevronDown,
+  ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  FolderOpen,
+  Calendar,
+  Layers,
+  Sparkles,
+  X,
 } from 'lucide-react';
 import {
   User,
   Task,
   Submission,
-  SubmissionStatus,
   SubmissionFile,
 } from '../types';
 import {
@@ -47,15 +46,6 @@ interface TrackingAndGradingProps {
   onRefreshData: () => void;
 }
 
-const EMOJI_FEEDBACKS = [
-  '🌟 ยอดเยี่ยมมาก สมบูรณ์แบบ',
-  '👍 ผ่านเกณฑ์การประเมินดีเยี่ยม',
-  '📝 มีจุดที่ควรปรับปรุงเพิ่มเติมเล็กน้อย',
-  '🎯 ชิ้นงานตรงตามมาตรฐานตัวชี้วัด',
-  '💡 มีนวัตกรรมและความคิดสร้างสรรค์น่าชื่นชม',
-  '⚠️ ขอให้แก้ไขเอกสารและส่งใหม่อีกครั้ง',
-];
-
 export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
   currentUser,
   tasks,
@@ -65,19 +55,16 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
 }) => {
   const isAdmin = currentUser?.role === 'ADMIN';
 
-  // Filters
-  const [selectedTaskId, setSelectedTaskId] = useState<string>('ALL');
+  // Search filter
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  // Task selection filter ('ALL' or task.id)
+  const [selectedTaskId, setSelectedTaskId] = useState<string>('ALL');
 
-  // Review / Comment Modal
-  const [reviewingSubmission, setReviewingSubmission] = useState<Submission | null>(null);
-  const [feedbackText, setFeedbackText] = useState('');
-  const [selectedEmoji, setSelectedEmoji] = useState(EMOJI_FEEDBACKS[0]);
-  const [reviewStatus, setReviewStatus] = useState<SubmissionStatus>('REVIEWED');
-  const [scoreVal, setScoreVal] = useState<number>(100);
+  // Collapse / Expand Category Groups
+  // Track open state for each taskId: true = expanded, false = collapsed
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
-  // Edit Submission Modal (for members or admin)
+  // Edit Submission Modal
   const [editingSub, setEditingSub] = useState<Submission | null>(null);
   const [editSubject, setEditSubject] = useState('');
   const [editDesc, setEditDesc] = useState('');
@@ -87,56 +74,71 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
     [users]
   );
 
-  // Statistics calculation
-  const targetTasks = selectedTaskId === 'ALL' ? tasks : tasks.filter((t) => t.id === selectedTaskId);
+  // Group submissions by task (ordered by tasks list)
+  const groupedTasks = useMemo(() => {
+    // Filter tasks if specific task selected
+    const tasksToShow = selectedTaskId === 'ALL'
+      ? tasks
+      : tasks.filter((t) => t.id === selectedTaskId);
 
-  const stats = useMemo(() => {
-    if (targetTasks.length === 0 || activeMembers.length === 0) {
-      return { submittedCount: 0, totalExpected: 0, percentage: 0 };
-    }
+    return tasksToShow.map((task) => {
+      // Find all submissions for this task matching search query
+      const taskSubs = submissions.filter((sub) => {
+        if (sub.taskId !== task.id) return false;
+        if (!searchTerm.trim()) return true;
 
-    if (selectedTaskId === 'ALL') {
-      const totalExpected = targetTasks.length * activeMembers.length;
-      const submittedCount = submissions.length;
-      const percentage = Math.min(100, Math.round((submittedCount / (totalExpected || 1)) * 100));
-      return { submittedCount, totalExpected, percentage };
-    } else {
-      const taskSubs = submissions.filter((s) => s.taskId === selectedTaskId);
-      const totalExpected = activeMembers.length;
-      const submittedCount = taskSubs.length;
-      const percentage = Math.min(100, Math.round((submittedCount / (totalExpected || 1)) * 100));
-      return { submittedCount, totalExpected, percentage };
-    }
-  }, [selectedTaskId, targetTasks, activeMembers, submissions]);
+        const term = searchTerm.toLowerCase();
+        return (
+          sub.memberName.toLowerCase().includes(term) ||
+          sub.subject.toLowerCase().includes(term) ||
+          sub.memberSchool.toLowerCase().includes(term) ||
+          sub.files.some((f) => f.name.toLowerCase().includes(term))
+        );
+      });
 
-  // Filtered Submissions List
-  const filteredSubmissions = useMemo(() => {
-    return submissions.filter((sub) => {
-      const matchTask = selectedTaskId === 'ALL' || sub.taskId === selectedTaskId;
-      const matchSearch =
-        sub.memberName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        sub.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        sub.memberSchool.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchStatus = statusFilter === 'ALL' || sub.status === statusFilter;
-      return matchTask && matchSearch && matchStatus;
+      return {
+        task,
+        submissions: taskSubs,
+        totalSubmissions: submissions.filter((s) => s.taskId === task.id).length,
+      };
     });
-  }, [submissions, selectedTaskId, searchTerm, statusFilter]);
+  }, [tasks, submissions, selectedTaskId, searchTerm]);
 
-  // Members who haven't submitted for selected task
-  const unsubmittedMembers = useMemo(() => {
-    if (selectedTaskId === 'ALL') return [];
-    const submittedMemberIds = new Set(
-      submissions.filter((s) => s.taskId === selectedTaskId).map((s) => s.memberId)
-    );
-    return activeMembers.filter((m) => !submittedMemberIds.has(m.id));
-  }, [selectedTaskId, activeMembers, submissions]);
+  // Overall Statistics
+  const totalSubmissionsCount = submissions.length;
+  const totalExpectedCount = tasks.length * (activeMembers.length || 1);
+  const overallPercentage = Math.min(
+    100,
+    Math.round((totalSubmissionsCount / (totalExpectedCount || 1)) * 100)
+  );
 
-  // Download simulation
+  // Collapse / Expand All Handlers
+  const handleExpandAll = () => {
+    setCollapsedGroups({});
+    notifyInfo('ขยายหมวดหมู่งานทั้งหมดแล้ว');
+  };
+
+  const handleCollapseAll = () => {
+    const allCollapsed: Record<string, boolean> = {};
+    tasks.forEach((t) => {
+      allCollapsed[t.id] = true;
+    });
+    setCollapsedGroups(allCollapsed);
+    notifyInfo('ย่อหมวดหมู่งานทั้งหมดแล้ว');
+  };
+
+  const toggleGroup = (taskId: string) => {
+    setCollapsedGroups((prev) => ({
+      ...prev,
+      [taskId]: !prev[taskId],
+    }));
+  };
+
+  // Direct File Download Function
   const handleDownloadFile = (file: SubmissionFile) => {
-    notifyInfo(`กำลังเปิด/ดาวน์โหลดไฟล์ ${file.name}...`);
+    notifyInfo(`กำลังเปิดดาวน์โหลดไฟล์ ${file.name}...`);
 
-    // Direct download trigger:
-    // If previewUrl is available (blob/base64), download directly
+    // If previewUrl is available (blob or base64), download directly
     if (file.previewUrl) {
       const a = document.createElement('a');
       a.href = file.previewUrl;
@@ -144,7 +146,7 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      notifySuccess(`ดาวน์โหลด ${file.name} เรียบร้อยแล้ว`);
+      notifySuccess(`ดาวน์โหลด ${file.name} สำเร็จ`);
       return;
     }
 
@@ -164,36 +166,8 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
     notifySuccess(`เปิดลิงก์ดาวน์โหลด ${file.name} แล้ว`);
   };
 
-  // Open Review Dialog (Admin)
-  const handleOpenReview = (sub: Submission) => {
-    setReviewingSubmission(sub);
-    setFeedbackText(sub.feedback || '');
-    setSelectedEmoji(sub.feedbackEmoji || EMOJI_FEEDBACKS[0]);
-    setReviewStatus(sub.status === 'SUBMITTED' ? 'REVIEWED' : sub.status);
-    setScoreVal(sub.score || 100);
-  };
-
-  // Save Review (Admin)
-  const handleSaveReview = () => {
-    if (!reviewingSubmission) return;
-
-    StorageService.updateSubmission({
-      ...reviewingSubmission,
-      status: reviewStatus,
-      feedback: feedbackText.trim(),
-      feedbackEmoji: selectedEmoji,
-      score: scoreVal,
-      checkedBy: currentUser?.fullName || 'ผู้ดูแลระบบวิชาการ',
-    });
-
-    notifySuccess('บันทึกผลการตรวจและข้อเสนอแนะสำเร็จ');
-    setReviewingSubmission(null);
-    onRefreshData();
-  };
-
   // Open Edit Submission Dialog
   const handleOpenEdit = (sub: Submission) => {
-    // Only Admin or the owner can edit
     if (!isAdmin && sub.memberId !== currentUser?.id) {
       notifyError('คุณไม่มีสิทธิ์แก้ไขผลงานของผู้อื่น');
       return;
@@ -218,7 +192,6 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
 
   // Delete Submission
   const handleDeleteSubmission = async (sub: Submission) => {
-    // Only Admin or the owner can delete
     if (!isAdmin && sub.memberId !== currentUser?.id) {
       notifyError('คุณไม่มีสิทธิ์ลบผลงานของผู้อื่น');
       return;
@@ -226,7 +199,7 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
 
     const ok = await confirmDialog(
       'ยืนยันการลบผลงานนี้?',
-      'ไฟล์และผลการตรวจจะถูกลบออกจากระบบ'
+      'ไฟล์และประวัติการส่งงานนี้จะถูกลบออกจากระบบ'
     );
     if (ok) {
       StorageService.deleteSubmission(sub.id);
@@ -235,31 +208,41 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
     }
   };
 
+  const formatThaiDate = (dateStr: string) => {
+    if (!dateStr) return '-';
+    try {
+      const [y, m, d] = dateStr.split('-');
+      const parsedYear = parseInt(y, 10);
+      const parsedMonth = parseInt(m, 10);
+      const parsedDay = parseInt(d, 10);
+      return `${String(parsedDay).padStart(2, '0')}/${String(parsedMonth).padStart(2, '0')}/${parsedYear}`;
+    } catch {
+      return dateStr;
+    }
+  };
+
   return (
     <div className="space-y-6">
-      {/* Top Header & Progress Overview Card */}
+      {/* Top Header Card */}
       <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-xs">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center shrink-0 border border-blue-100">
-              <ClipboardCheck className="w-5 h-5" />
+          <div className="flex items-center space-x-3.5">
+            <div className="w-12 h-12 bg-blue-600 text-white rounded-2xl flex items-center justify-center shrink-0 shadow-md ring-4 ring-blue-100">
+              <ClipboardCheck className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-base sm:text-lg font-bold text-slate-800">
-                {isAdmin
-                  ? 'Task Tracking & Grading Center'
-                  : 'Member Submission Tracker'}
-              </h2>
-              <p className="text-xs text-slate-400">
-                {isAdmin
-                  ? 'ตรวจสอบผลงานสมาชิก ให้ข้อเสนอแนะ และดาวน์โหลดไฟล์งาน'
-                  : 'ดูสถานะการส่งงานของเพื่อนครู และดาวน์โหลดตัวอย่างผลงานมาศึกษาได้'}
+              <h1 className="text-lg sm:text-xl font-bold text-slate-800 tracking-tight">
+                ติดตามงาน & ศูนย์ดาวน์โหลดผลงาน
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-500">
+                จัดหมวดหมู่ตามภาระงานที่มอบหมาย สามารถกดดาวน์โหลดไฟล์ได้ทันที ทั้ง Admin และสมาชิก
               </p>
             </div>
           </div>
 
-          {/* Controls: Task selector & Admin Google Drive button */}
-          <div className="flex flex-wrap items-center gap-2">
+          {/* Controls: Admin Google Drive Button & Task Filter */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Google Drive Folder Button (ONLY for Admin) */}
             {isAdmin && (
               <a
                 href={
@@ -269,23 +252,24 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
                 }
                 target="_blank"
                 rel="noreferrer"
-                className="px-3 py-2 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-xl transition-all inline-flex items-center space-x-1.5 shadow-2xs"
-                title="เปิดโฟลเดอร์ Google Drive ของงานนี้"
+                id="btn-admin-google-drive"
+                className="px-3.5 py-2 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-xl transition-all inline-flex items-center space-x-1.5 shadow-2xs cursor-pointer active:scale-95"
+                title="เข้าสู่โฟลเดอร์หลักใน Google Drive (เฉพาะ Admin)"
               >
                 <HardDrive className="w-4 h-4 text-emerald-600" />
                 <span>Google Drive</span>
-                <ExternalLink className="w-3 h-3 text-emerald-600" />
+                <ExternalLink className="w-3.5 h-3.5 text-emerald-600" />
               </a>
             )}
 
+            {/* Filter by specific task */}
             <div className="flex items-center space-x-2">
-              <span className="text-xs font-bold text-slate-600 whitespace-nowrap">เลือกหัวข้องาน:</span>
               <select
                 value={selectedTaskId}
                 onChange={(e) => setSelectedTaskId(e.target.value)}
-                className="px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden font-semibold text-slate-800 max-w-[200px] sm:max-w-xs truncate"
+                className="px-3.5 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden font-semibold text-slate-800 max-w-[220px] sm:max-w-xs truncate"
               >
-                <option value="ALL">📌 ดูงานทุกหัวข้อทั้งหมด ({tasks.length} หัวข้อ)</option>
+                <option value="ALL">📂 แสดงทุกหมวดหมู่งาน ({tasks.length} ภาระงาน)</option>
                 {tasks.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.title}
@@ -296,408 +280,277 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
           </div>
         </div>
 
-        {/* Visual Progress Dashboard Bar */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
-          <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 md:col-span-2">
-            <div className="flex items-center justify-between text-xs mb-1.5">
-              <span className="font-bold text-slate-700">ความก้าวหน้าการส่งงานโดยรวม</span>
-              <span className="font-bold text-blue-700">{stats.percentage}%</span>
+        {/* Progress bar summary */}
+        <div className="pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex-1 max-w-xl">
+            <div className="flex items-center justify-between text-xs mb-1 font-bold text-slate-700">
+              <span>ความก้าวหน้าการส่งงานรวมในระบบ</span>
+              <span className="text-blue-700 font-mono">{overallPercentage}% ({totalSubmissionsCount} รายการ)</span>
             </div>
-            {/* Progress bar */}
-            <div className="w-full bg-slate-200/80 rounded-full h-3 overflow-hidden p-0.5">
+            <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
               <div
-                className="bg-linear-to-r from-blue-500 via-indigo-500 to-purple-600 h-full rounded-full transition-all duration-500 shadow-xs"
-                style={{ width: `${stats.percentage}%` }}
+                className="bg-blue-600 h-full rounded-full transition-all duration-500"
+                style={{ width: `${overallPercentage}%` }}
               ></div>
-            </div>
-            <div className="flex items-center justify-between text-[11px] text-slate-400 mt-2">
-              <span>ส่งแล้ว: {stats.submittedCount} รายการ</span>
-              <span>เป้าหมายทั้งหมด: {stats.totalExpected} รายการ</span>
             </div>
           </div>
 
-          <div className="p-4 bg-blue-50/40 rounded-2xl border border-blue-200/80 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-blue-800">สมาชิกที่ตรวจงานแล้ว</p>
-              <p className="text-2xl font-bold text-blue-900 mt-1">
-                {submissions.filter((s) => s.status === 'REVIEWED').length}
-                <span className="text-xs text-blue-600 font-normal"> / {submissions.length} งาน</span>
-              </p>
-            </div>
-            <div className="w-10 h-10 bg-blue-600 text-white rounded-2xl flex items-center justify-center shrink-0 shadow-xs">
-              <UserCheck className="w-5 h-5" />
-            </div>
+          {/* Quick Expand / Collapse Buttons */}
+          <div className="flex items-center space-x-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleExpandAll}
+              className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors inline-flex items-center space-x-1 cursor-pointer"
+              title="ขยายทุกหมวดหมู่งาน"
+            >
+              <ChevronsUpDown className="w-3.5 h-3.5 text-blue-600" />
+              <span>ขยายทั้งหมด</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleCollapseAll}
+              className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors inline-flex items-center space-x-1 cursor-pointer"
+              title="ย่อทุกหมวดหมู่งาน"
+            >
+              <ChevronsDownUp className="w-3.5 h-3.5 text-slate-500" />
+              <span>ย่อทั้งหมด</span>
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Unsubmitted list (If single task selected) */}
-      {selectedTaskId !== 'ALL' && unsubmittedMembers.length > 0 && (
-        <div className="bg-rose-50/70 border border-rose-200 rounded-3xl p-4 shadow-xs">
-          <div className="flex items-center space-x-2 text-xs font-bold text-rose-900 mb-2">
-            <UserX className="w-4 h-4 text-rose-600" />
-            <span>สมาชิกที่ยังไม่ได้ส่งงานหัวข้อนี้ ({unsubmittedMembers.length} ท่าน):</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {unsubmittedMembers.map((m) => (
-              <span
-                key={m.id}
-                className="inline-flex items-center space-x-1.5 bg-white border border-rose-200 text-rose-800 px-3 py-1 rounded-full text-xs font-medium"
-              >
-                <img src={m.avatarUrl} alt="" className="w-4 h-4 rounded-full object-cover" />
-                <span>{m.fullName}</span>
-                <span className="text-[10px] text-slate-400">({m.school})</span>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Search & Filter Toolbar */}
+      {/* Search Toolbar */}
       <div className="bg-white rounded-3xl border border-slate-200/80 p-4 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="relative w-full sm:w-80">
+        <div className="relative w-full sm:w-96">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="ค้นหาชื่อครู, หัวข้องาน, สังกัด..."
+            placeholder="ค้นหาชื่อครูผู้ส่ง, โรงเรียน, หัวข้องาน, ชื่อไฟล์..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3.5 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden"
+            className="w-full pl-9 pr-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-hidden"
           />
         </div>
 
-        <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
-          <Filter className="w-4 h-4 text-slate-400" />
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white outline-hidden font-medium text-slate-700"
-          >
-            <option value="ALL">สถานะทั้งหมด</option>
-            <option value="SUBMITTED">รอดำเนินการตรวจ</option>
-            <option value="REVIEWED">ตรวจแล้ว (ผ่าน)</option>
-            <option value="NEEDS_REVISION">ให้แก้ไขเพิ่มเติม</option>
-          </select>
+        <div className="text-xs text-slate-500 font-medium">
+          พบผลงานทั้งหมด <strong className="text-slate-800">{groupedTasks.reduce((acc, curr) => acc + curr.submissions.length, 0)}</strong> รายการ จาก <strong className="text-slate-800">{groupedTasks.length}</strong> หมวดหมู่งาน
         </div>
       </div>
 
-      {/* Main Inspection Table */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-xs">
-        <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
-          <h2 className="text-base font-bold text-slate-800">
-            ตารางรายการผลงานที่ส่งเข้ามา ({filteredSubmissions.length} รายการ)
-          </h2>
-          <span className="text-xs text-slate-400 font-medium">
-            {selectedTaskId === 'ALL'
-              ? 'แสดงทุกหัวข้องาน'
-              : `หัวข้อ: ${tasks.find((t) => t.id === selectedTaskId)?.title || '-'}`}
-          </span>
-        </div>
-
-        {filteredSubmissions.length === 0 ? (
-          <div className="text-center py-12 text-slate-400">
-            <ClipboardCheck className="w-12 h-12 mx-auto mb-2 opacity-40" />
-            <p className="text-sm font-semibold">ไม่พบรายการส่งงานตามเงื่อนไขที่เลือก</p>
+      {/* Grouped Accordion / Category Sections */}
+      <div className="space-y-4">
+        {groupedTasks.length === 0 ? (
+          <div className="bg-white rounded-3xl border border-slate-200/80 p-12 text-center text-slate-400">
+            <ClipboardCheck className="w-12 h-12 mx-auto mb-2 opacity-40 text-slate-400" />
+            <p className="text-sm font-semibold">ไม่พบรายการหมวดหมู่งานตามที่ค้นหา</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs sm:text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-slate-600">
-                  <th className="py-3 px-3 rounded-l-lg font-bold">ผู้ส่งผลงาน</th>
-                  <th className="py-3 px-3 font-bold">หัวข้องาน & งานที่มอบหมาย</th>
-                  <th className="py-3 px-3 font-bold">ไฟล์งานแนบ</th>
-                  <th className="py-3 px-3 font-bold">สถานะ & ข้อเสนอแนะ</th>
-                  <th className="py-3 px-3 rounded-r-lg font-bold text-right">การจัดการ</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredSubmissions.map((sub) => {
-                  const isOwner = sub.memberId === currentUser?.id;
-                  const canEdit = isAdmin || isOwner;
+          groupedTasks.map(({ task, submissions: taskSubs, totalSubmissions }) => {
+            const isCollapsed = Boolean(collapsedGroups[task.id]);
 
-                  return (
-                    <tr key={sub.id} className="hover:bg-slate-50/80 transition-colors">
-                      {/* Member profile */}
-                      <td className="py-4 px-3 align-top">
-                        <div className="flex items-center space-x-2.5">
-                          <img
-                            src={sub.memberAvatar || 'https://api.dicebear.com/7.x/bottts/svg?seed=user'}
-                            alt=""
-                            className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-200"
-                          />
-                          <div>
-                            <p className="font-bold text-slate-800 leading-tight">
-                              {sub.memberName}
-                            </p>
-                            <p className="text-[11px] text-slate-500 mt-0.5">{sub.memberSchool}</p>
-                            <p className="text-[10px] text-slate-400 mt-0.5">
-                              {new Date(sub.submittedAt).toLocaleString('th-TH')}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
+            return (
+              <div
+                key={task.id}
+                id={`task-category-${task.id}`}
+                className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden transition-all"
+              >
+                {/* Category Group Header (Click to toggle collapse) */}
+                <div
+                  onClick={() => toggleGroup(task.id)}
+                  className={`p-4 sm:p-5 flex items-center justify-between gap-4 cursor-pointer select-none transition-colors ${
+                    isCollapsed ? 'bg-slate-50/70 hover:bg-slate-100/80' : 'bg-slate-50/90 border-b border-slate-200/80'
+                  }`}
+                >
+                  <div className="flex items-center space-x-3 min-w-0">
+                    <div className="p-2 rounded-xl bg-blue-100/80 text-blue-700 shrink-0">
+                      {isCollapsed ? (
+                        <ChevronRight className="w-5 h-5" />
+                      ) : (
+                        <ChevronDown className="w-5 h-5" />
+                      )}
+                    </div>
 
-                      {/* Subject & Task */}
-                      <td className="py-4 px-3 align-top max-w-xs">
-                        <p className="font-bold text-slate-900 leading-tight">{sub.subject}</p>
-                        <span className="inline-block text-[11px] font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-md mt-1 border border-purple-200">
-                          {sub.taskTitle}
+                    <div className="min-w-0">
+                      <div className="flex items-center space-x-2 flex-wrap gap-1">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200">
+                          {task.category || 'งานวิชาการ'}
                         </span>
-                        {sub.description && (
-                          <p className="text-xs text-slate-600 mt-1 line-clamp-2">
-                            {sub.description}
-                          </p>
-                        )}
-                      </td>
+                        <h2 className="text-sm sm:text-base font-bold text-slate-900 truncate">
+                          {task.title}
+                        </h2>
+                      </div>
+                      <div className="flex items-center space-x-3 text-xs text-slate-500 mt-0.5">
+                        <span className="flex items-center space-x-1 font-mono">
+                          <Calendar className="w-3.5 h-3.5 text-purple-600" />
+                          <span>กำหนดส่ง: {formatThaiDate(task.dueDate)}</span>
+                        </span>
+                        <span>•</span>
+                        <span>มอบหมายโดย: {task.assignedBy}</span>
+                      </div>
+                    </div>
+                  </div>
 
-                      {/* Files & Download Buttons (Every file type from Google Drive) */}
-                      <td className="py-4 px-3 align-top">
-                        <div className="space-y-1.5">
-                          {sub.files.map((file) => (
-                            <button
-                              key={file.id}
-                              onClick={() => handleDownloadFile(file)}
-                              className="group w-full max-w-[200px] flex items-center justify-between p-1.5 bg-slate-50 hover:bg-purple-50 border border-slate-200 hover:border-purple-300 rounded-lg text-left transition-colors cursor-pointer"
-                              title={`กดดาวน์โหลดไฟล์ ${file.name}`}
-                            >
-                              <div className="flex items-center space-x-1.5 min-w-0 pr-1">
-                                {file.name.endsWith('.pdf') ? (
-                                  <FileText className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                                ) : file.name.match(/\.(xlsx|xls)$/) ? (
-                                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                                ) : (
-                                  <File className="w-3.5 h-3.5 text-purple-500 shrink-0" />
-                                )}
-                                <span className="text-xs text-slate-700 group-hover:text-purple-700 truncate">
-                                  {file.name}
-                                </span>
-                              </div>
-                              <Download className="w-3.5 h-3.5 text-slate-400 group-hover:text-purple-600 shrink-0" />
-                            </button>
-                          ))}
-                        </div>
-                      </td>
+                  {/* Submission Count Badge & GDrive Button for Task (Admin only) */}
+                  <div className="flex items-center space-x-2 shrink-0">
+                    {isAdmin && task.gDriveFolderUrl && (
+                      <a
+                        href={task.gDriveFolderUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="hidden sm:inline-flex items-center space-x-1 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-lg transition-colors"
+                        title="เปิดโฟลเดอร์ Google Drive ของงานนี้ (เฉพาะ Admin)"
+                      >
+                        <HardDrive className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>ไดรฟ์ของงาน</span>
+                      </a>
+                    )}
 
-                      {/* Status & Feedback */}
-                      <td className="py-4 px-3 align-top">
-                        <div className="space-y-1.5">
-                          <span
-                            className={`inline-flex items-center space-x-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
-                              sub.status === 'REVIEWED'
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                : sub.status === 'NEEDS_REVISION'
-                                ? 'bg-amber-50 text-amber-800 border-amber-300'
-                                : 'bg-blue-50 text-blue-800 border-blue-200'
-                            }`}
-                          >
-                            {sub.status === 'REVIEWED' ? (
-                              <>
-                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                <span>ผ่านเกณฑ์ประเมิน ({sub.score || 100} คะแนน)</span>
-                              </>
-                            ) : sub.status === 'NEEDS_REVISION' ? (
-                              <>
-                                <AlertCircle className="w-3 h-3 text-amber-600" />
-                                <span>ควรปรับปรุง</span>
-                              </>
-                            ) : (
-                              <span>รอการตรวจ</span>
-                            )}
-                          </span>
+                    <span className="px-3 py-1 text-xs font-bold rounded-xl bg-blue-50 text-blue-700 border border-blue-200">
+                      ส่งแล้ว {taskSubs.length} งาน
+                    </span>
+                  </div>
+                </div>
 
-                          {sub.feedbackEmoji && (
-                            <p className="text-xs font-semibold text-purple-700">
-                              {sub.feedbackEmoji}
-                            </p>
-                          )}
+                {/* Group Content (List of Submissions & Direct Download Buttons) */}
+                {!isCollapsed && (
+                  <div className="p-4 sm:p-5">
+                    {taskSubs.length === 0 ? (
+                      <div className="py-8 text-center text-slate-400 space-y-1">
+                        <FolderOpen className="w-8 h-8 mx-auto text-slate-300" />
+                        <p className="text-xs font-medium">ยังไม่มีสมาชิกส่งผลงานในหมวดนี้</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs sm:text-sm">
+                          <thead>
+                            <tr className="border-b border-slate-200/80 bg-slate-50/50 text-slate-600">
+                              <th className="py-2.5 px-3 rounded-l-lg font-bold">ครูผู้ส่งผลงาน</th>
+                              <th className="py-2.5 px-3 font-bold">หัวข้องาน / รายละเอียด</th>
+                              <th className="py-2.5 px-3 font-bold text-blue-700">
+                                📥 ไฟล์งาน (กดปุ่มเพื่อดาวน์โหลดได้ทันที)
+                              </th>
+                              <th className="py-2.5 px-3 font-bold">วันที่ส่ง</th>
+                              <th className="py-2.5 px-3 rounded-r-lg font-bold text-right">การจัดการ</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {taskSubs.map((sub) => {
+                              const isOwner = sub.memberId === currentUser?.id;
+                              const canEdit = isAdmin || isOwner;
 
-                          {sub.feedback && (
-                            <p className="text-[11px] text-slate-600 bg-slate-100/70 p-2 rounded-lg border border-slate-200 line-clamp-2">
-                              {sub.feedback}
-                            </p>
-                          )}
-                        </div>
-                      </td>
+                              return (
+                                <tr key={sub.id} className="hover:bg-slate-50/70 transition-colors">
+                                  {/* Member profile */}
+                                  <td className="py-3 px-3 align-middle">
+                                    <div className="flex items-center space-x-2.5">
+                                      <img
+                                        src={sub.memberAvatar || 'https://api.dicebear.com/7.x/bottts/svg?seed=user'}
+                                        alt=""
+                                        className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-200 shrink-0"
+                                      />
+                                      <div className="min-w-0">
+                                        <p className="font-bold text-slate-800 leading-tight truncate">
+                                          {sub.memberName}
+                                        </p>
+                                        <p className="text-[11px] text-slate-500 mt-0.5 truncate">{sub.memberSchool}</p>
+                                      </div>
+                                    </div>
+                                  </td>
 
-                      {/* Actions & Emoji Management */}
-                      <td className="py-4 px-3 align-top text-right whitespace-nowrap">
-                        <div className="inline-flex items-center space-x-1">
-                          {/* Admin Review Button */}
-                          {isAdmin && (
-                            <button
-                              onClick={() => handleOpenReview(sub)}
-                              className="px-2.5 py-1.5 text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition-colors cursor-pointer flex items-center space-x-1"
-                              title="ให้ข้อเสนอแนะและตรวจงาน"
-                            >
-                              <MessageSquare className="w-3.5 h-3.5" />
-                              <span>ตรวจงาน</span>
-                            </button>
-                          )}
+                                  {/* Subject & Description */}
+                                  <td className="py-3 px-3 align-middle max-w-xs">
+                                    <p className="font-bold text-slate-900 leading-snug">{sub.subject}</p>
+                                    {sub.description && (
+                                      <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">
+                                        {sub.description}
+                                      </p>
+                                    )}
+                                  </td>
 
-                          {/* Edit / Delete Emoji Buttons */}
-                          {canEdit && (
-                            <>
-                              <button
-                                onClick={() => handleOpenEdit(sub)}
-                                className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                                title="✏️ แก้ไขข้อมูลงาน"
-                              >
-                                <Edit3 className="w-4 h-4" />
-                              </button>
+                                  {/* Direct Download File Buttons (For both Admin & Members) */}
+                                  <td className="py-3 px-3 align-middle">
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {sub.files && sub.files.length > 0 ? (
+                                        sub.files.map((file) => (
+                                          <button
+                                            key={file.id}
+                                            type="button"
+                                            onClick={() => handleDownloadFile(file)}
+                                            className="group inline-flex items-center space-x-2 px-3 py-1.5 bg-blue-50 hover:bg-blue-600 border border-blue-200 hover:border-blue-600 rounded-xl text-left transition-all cursor-pointer shadow-2xs active:scale-95"
+                                            title={`กดดาวน์โหลดไฟล์ ${file.name} ได้ทันที`}
+                                          >
+                                            {file.name.endsWith('.pdf') ? (
+                                              <FileText className="w-4 h-4 text-rose-500 group-hover:text-white shrink-0" />
+                                            ) : file.name.match(/\.(xlsx|xls|csv)$/) ? (
+                                              <FileSpreadsheet className="w-4 h-4 text-emerald-600 group-hover:text-white shrink-0" />
+                                            ) : (
+                                              <File className="w-4 h-4 text-blue-600 group-hover:text-white shrink-0" />
+                                            )}
+                                            <span className="text-xs font-bold text-blue-900 group-hover:text-white max-w-[140px] truncate">
+                                              {file.name}
+                                            </span>
+                                            <Download className="w-3.5 h-3.5 text-blue-500 group-hover:text-white shrink-0" />
+                                          </button>
+                                        ))
+                                      ) : (
+                                        <span className="text-xs text-slate-400">- ไม่มีไฟล์ -</span>
+                                      )}
+                                    </div>
+                                  </td>
 
-                              <button
-                                onClick={() => handleDeleteSubmission(sub)}
-                                className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                title="🗑️ ลบงานนี้"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                                  {/* Date Submitted */}
+                                  <td className="py-3 px-3 align-middle text-xs text-slate-500 font-mono whitespace-nowrap">
+                                    {new Date(sub.submittedAt).toLocaleString('th-TH', {
+                                      dateStyle: 'short',
+                                      timeStyle: 'short',
+                                    })}
+                                  </td>
+
+                                  {/* Actions */}
+                                  <td className="py-3 px-3 align-middle text-right whitespace-nowrap">
+                                    {canEdit && (
+                                      <div className="inline-flex items-center space-x-1">
+                                        <button
+                                          onClick={() => handleOpenEdit(sub)}
+                                          className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                                          title="✏️ แก้ไขข้อมูลงาน"
+                                        >
+                                          <Edit3 className="w-4 h-4" />
+                                        </button>
+
+                                        <button
+                                          onClick={() => handleDeleteSubmission(sub)}
+                                          className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                          title="🗑️ ลบงานนี้"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
-
-      {/* Admin Review / Feedback Modal */}
-      {reviewingSubmission && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 relative animate-in fade-in zoom-in duration-200">
-            <button
-              onClick={() => setReviewingSubmission(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 rounded-lg"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center space-x-3 mb-4">
-              <div className="p-3 bg-purple-600 text-white rounded-xl shadow-xs">
-                <Sparkles className="w-6 h-6" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-slate-900">
-                  ตรวจงานและให้ข้อเสนอแนะ (Feedback)
-                </h2>
-                <p className="text-xs text-slate-500">
-                  สำหรับ: {reviewingSubmission.memberName} ({reviewingSubmission.subject})
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {/* Status Selector */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700">ผลการประเมิน</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setReviewStatus('REVIEWED')}
-                    className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center justify-center space-x-1.5 cursor-pointer ${
-                      reviewStatus === 'REVIEWED'
-                        ? 'bg-emerald-50 text-emerald-800 border-emerald-400 ring-2 ring-emerald-500/20'
-                        : 'bg-slate-50 text-slate-600 border-slate-200'
-                    }`}
-                  >
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    <span>✓ ผ่านเกณฑ์ประเมิน</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setReviewStatus('NEEDS_REVISION')}
-                    className={`py-2 px-3 text-xs font-bold rounded-xl border flex items-center justify-center space-x-1.5 cursor-pointer ${
-                      reviewStatus === 'NEEDS_REVISION'
-                        ? 'bg-amber-50 text-amber-800 border-amber-400 ring-2 ring-amber-500/20'
-                        : 'bg-slate-50 text-slate-600 border-slate-200'
-                    }`}
-                  >
-                    <AlertCircle className="w-4 h-4 text-amber-600" />
-                    <span>⚠️ ควรปรับปรุงแก้ไข</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Quick Emoji Feedbacks */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700">
-                  ข้อความสติ๊กเกอร์ / Emoji ตอบกลับด่วน
-                </label>
-                <div className="grid grid-cols-1 gap-1.5 max-h-32 overflow-y-auto">
-                  {EMOJI_FEEDBACKS.map((emoji) => (
-                    <button
-                      key={emoji}
-                      type="button"
-                      onClick={() => setSelectedEmoji(emoji)}
-                      className={`text-left text-xs px-3 py-1.5 rounded-lg border transition-all cursor-pointer ${
-                        selectedEmoji === emoji
-                          ? 'bg-purple-100 text-purple-900 border-purple-300 font-bold'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Detailed Comments */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700">ข้อเสนอแนะเพิ่มเติม</label>
-                <textarea
-                  rows={3}
-                  value={feedbackText}
-                  onChange={(e) => setFeedbackText(e.target.value)}
-                  placeholder="เขียนคำแนะนำ คำชมเชย หรือข้อที่ต้องการให้แก้ไข..."
-                  className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-hidden"
-                />
-              </div>
-
-              {/* Score */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700">คะแนนประเมิน (เต็ม 100)</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={scoreVal}
-                  onChange={(e) => setScoreVal(Number(e.target.value))}
-                  className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white outline-hidden font-bold"
-                />
-              </div>
-            </div>
-
-            <div className="mt-6 flex justify-end space-x-3">
-              <button
-                onClick={() => setReviewingSubmission(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
-              >
-                ยกเลิก
-              </button>
-              <button
-                onClick={handleSaveReview}
-                className="btn-glow-purple px-5 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition-all cursor-pointer"
-              >
-                บันทึกผลการตรวจ
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Edit Submission Modal */}
       {editingSub && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 relative">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 relative animate-in fade-in zoom-in duration-200">
             <button
               onClick={() => setEditingSub(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1"
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -711,7 +564,7 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
                   type="text"
                   value={editSubject}
                   onChange={(e) => setEditSubject(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-hidden"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:ring-2 focus:ring-blue-500/20"
                 />
               </div>
               <div>
@@ -720,7 +573,7 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
                   rows={3}
                   value={editDesc}
                   onChange={(e) => setEditDesc(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-hidden"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-hidden focus:bg-white focus:ring-2 focus:ring-blue-500/20"
                 />
               </div>
             </div>
@@ -728,13 +581,13 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
             <div className="mt-5 flex justify-end space-x-2">
               <button
                 onClick={() => setEditingSub(null)}
-                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 rounded-xl"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
               >
                 ยกเลิก
               </button>
               <button
                 onClick={handleSaveEditSub}
-                className="px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl"
+                className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors cursor-pointer shadow-md"
               >
                 บันทึกการแก้ไข
               </button>

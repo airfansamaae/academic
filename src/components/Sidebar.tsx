@@ -6,8 +6,14 @@ import {
   FolderArchive,
   Sparkles,
   Users,
+  Utensils,
+  ExternalLink,
 } from 'lucide-react';
 import { NavigationTab, UserRole } from '../types';
+
+// Web App External URL for Lunch System (Backend link hidden in UI)
+const LUNCH_SYSTEM_URL =
+  'https://script.google.com/macros/s/AKfycbzgmOBgQ4534lIiTVuUikzaEF0PXofybzvaYZlXPvFeY4U8d3KrcpXZ-MsooaHSgIQ/exec';
 
 interface SidebarProps {
   activeTab: NavigationTab;
@@ -40,8 +46,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'ASSIGN_SUBMIT' as NavigationTab,
-      label: userRole === 'ADMIN' ? 'สั่งงาน & มอบหมายงาน' : 'ส่งงานตามที่มอบหมาย',
-      subLabel: userRole === 'ADMIN' ? 'สร้างงานและประกาศ' : 'อัปโหลดงานส่งวิชาการ',
+      label: userRole === 'ADMIN' ? 'มอบหมายงาน & ส่งงาน' : 'มอบหมายงาน & ส่งงาน',
+      subLabel: userRole === 'ADMIN' ? 'สร้างงานมอบหมายและประกาศ' : 'อัปโหลดงานส่งวิชาการ',
       iconEmoji: '📝',
       icon: Send,
       color: 'text-emerald-600',
@@ -52,14 +58,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       id: 'TRACKING_REVIEW' as NavigationTab,
-      label: userRole === 'ADMIN' ? 'ติดตาม & ตรวจงาน' : 'ติดตามสถานะการส่งงาน',
-      subLabel: userRole === 'ADMIN' ? 'ประเมินและให้ข้อเสนอแนะ' : 'ตรวจสอบสถานะเพื่อนและตนเอง',
+      label: 'ติดตาม & ดาวน์โหลดงาน',
+      subLabel: 'จัดหมวดหมู่ & ดาวน์โหลดไฟล์',
       iconEmoji: '🔍',
       icon: ClipboardCheck,
       color: 'text-blue-600',
       activeBg: 'bg-blue-50 text-blue-700 border-blue-100 shadow-xs font-semibold',
       hoverGlow: 'hover:bg-slate-50 text-slate-600',
-      badge: userRole === 'ADMIN' && pendingReviewsCount > 0 ? `${pendingReviewsCount} รอตรวจ` : null,
+      badge: null,
       badgeColor: 'bg-rose-100 text-rose-800 border-rose-200',
     },
     {
@@ -134,6 +140,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </button>
             );
           })}
+
+          {/* ปุ่มระบบอาหารกลางวัน (ถัดจากศูนย์เอกสาร - ลิงก์ตรงไปเว็บภายนอกโดยไม่แสดง URL ใน UI) */}
+          <a
+            href={LUNCH_SYSTEM_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            id="nav-lunch-system-btn"
+            className="w-full text-left p-3 rounded-2xl border border-transparent bg-white hover:bg-orange-50 hover:border-orange-200 transition-all flex items-center space-x-3 cursor-pointer group text-slate-600 hover:text-orange-700"
+            title="เปิดระบบอาหารกลางวันในแท็บใหม่"
+          >
+            <div className="w-9 h-9 rounded-xl shrink-0 flex items-center justify-center text-base bg-orange-50 text-orange-600 border border-orange-100 transition-transform group-hover:scale-105 group-hover:bg-orange-500 group-hover:text-white shadow-2xs">
+              <Utensils className="w-4 h-4" />
+            </div>
+
+            <div className="flex-1 min-w-0 pr-1">
+              <div className="flex items-center justify-between gap-1.5">
+                <p className="text-xs sm:text-sm font-semibold tracking-tight whitespace-nowrap overflow-hidden text-ellipsis group-hover:text-orange-950">
+                  ระบบอาหารกลางวัน
+                </p>
+                <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-orange-600 shrink-0" />
+              </div>
+              <p className="text-[11px] text-slate-400 font-normal mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis group-hover:text-orange-600">
+                เข้าสู่ระบบอาหารกลางวัน
+              </p>
+            </div>
+          </a>
         </nav>
       </div>
 

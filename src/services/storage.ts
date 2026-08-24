@@ -575,6 +575,13 @@ export class StorageService {
     return newAnn;
   }
 
+  static updateAnnouncement(ann: Announcement): void {
+    const list = this.getAnnouncements().map((a) =>
+      a.id === ann.id ? { ...ann, updatedAt: getNowISO() } : a
+    );
+    this.saveAnnouncements(list);
+  }
+
   static deleteAnnouncement(id: string): void {
     const list = this.getAnnouncements().filter((a) => a.id !== id);
     this.saveAnnouncements(list);

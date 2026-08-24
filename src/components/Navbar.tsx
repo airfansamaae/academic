@@ -53,9 +53,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <h1 className="text-base sm:text-lg font-bold tracking-tight text-slate-800 leading-tight">
                     ACADEMIC <span className="text-purple-600">SYSTEM</span>
                   </h1>
-                  <span className="hidden lg:inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-purple-50 text-purple-700 border border-purple-100">
-                    Suite v2.0
-                  </span>
                 </div>
                 <p className="text-[11px] text-slate-400 font-medium line-clamp-1">
                   {settings.schoolName}
