@@ -301,43 +301,50 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     }
   };
 
-  // --- Member Multi-file Upload to Google Drive via Apps Script Web App ---
+  // --- Member Multi-file Upload to Google Drive via Apps Script Web App (Parallel Fast Upload) ---
   const handleFilesChosen = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
     setIsUploading(true);
 
     const fileList = Array.from(files);
-    const uploadedResults: SubmissionFile[] = [];
+    notifyInfo(`กำลังประมวลผลและอัปโหลด ${fileList.length} ไฟล์...`);
 
-    for (let i = 0; i < fileList.length; i++) {
-      const file = fileList[i];
-      try {
-        const result = await uploadFileToGoogleDrive(file);
-        uploadedResults.push({
-          id: `file-${Date.now()}-${i}`,
-          name: file.name,
-          size: file.size,
-          type: file.type || 'application/octet-stream',
-          gDriveUrl: result.fileUrl || GDRIVE_FOLDER_URL,
-          uploadedAt: new Date().toISOString(),
-        });
-      } catch (err) {
-        console.error('File upload error:', err);
-        uploadedResults.push({
-          id: `file-${Date.now()}-${i}`,
-          name: file.name,
-          size: file.size,
-          type: file.type || 'application/octet-stream',
-          gDriveUrl: GDRIVE_FOLDER_URL,
-          uploadedAt: new Date().toISOString(),
-        });
-      }
+    try {
+      const uploadPromises = fileList.map(async (file, i) => {
+        try {
+          const result = await uploadFileToGoogleDrive(file);
+          return {
+            id: `file-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`,
+            name: file.name,
+            size: file.size,
+            type: file.type || 'application/octet-stream',
+            gDriveUrl: result.fileUrl || GDRIVE_FOLDER_URL,
+            previewUrl: result.downloadUrl,
+            uploadedAt: new Date().toISOString(),
+          } as SubmissionFile;
+        } catch (err) {
+          console.error('File upload error:', err);
+          return {
+            id: `file-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`,
+            name: file.name,
+            size: file.size,
+            type: file.type || 'application/octet-stream',
+            gDriveUrl: GDRIVE_FOLDER_URL,
+            uploadedAt: new Date().toISOString(),
+          } as SubmissionFile;
+        }
+      });
+
+      const uploadedResults = await Promise.all(uploadPromises);
+      setUploadedFiles((prev) => [...prev, ...uploadedResults]);
+      notifySuccess(`อัปโหลดและแนบ ${uploadedResults.length} ไฟล์เรียบร้อยแล้ว 🚀✨`);
+    } catch (err) {
+      console.error('Parallel upload error:', err);
+      notifyError('เกิดข้อผิดพลาดในการอัปโหลดไฟล์');
+    } finally {
+      setIsUploading(false);
     }
-
-    setUploadedFiles((prev) => [...prev, ...uploadedResults]);
-    setIsUploading(false);
-    notifySuccess(`อัปโหลด ${uploadedResults.length} ไฟล์เข้าสู่ Google Drive สำเร็จ 🚀`);
   };
 
   const handleRemoveFile = (fileId: string) => {

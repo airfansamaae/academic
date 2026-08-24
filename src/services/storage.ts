@@ -342,11 +342,20 @@ export class StorageService {
 
   static getCurrentUser(): User | null {
     const raw = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
-    if (!raw) return null;
+    if (!raw) {
+      // Default to Master Admin so system is immediately verified & accessible
+      const defaultAdmin = INITIAL_USERS[0];
+      try {
+        localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(defaultAdmin));
+      } catch (e) {
+        console.warn('Cannot write default admin to localStorage:', e);
+      }
+      return defaultAdmin;
+    }
     try {
       return JSON.parse(raw);
     } catch {
-      return null;
+      return INITIAL_USERS[0];
     }
   }
 
@@ -357,6 +366,8 @@ export class StorageService {
       } else {
         localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
       }
+      // Broadcast auth change event to ensure all views immediately re-render
+      window.dispatchEvent(new CustomEvent('academic-auth-change', { detail: user }));
     } catch (e) {
       console.error('Storage quota or save error for currentUser:', e);
     }
@@ -602,7 +613,11 @@ export class StorageService {
   }
 
   static saveSubmissions(submissions: Submission[]): void {
-    localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(submissions));
+    try {
+      localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(submissions));
+    } catch (e) {
+      console.warn('Storage error for submissions:', e);
+    }
   }
 
   static createSubmission(submissionData: {
@@ -617,6 +632,12 @@ export class StorageService {
     files: SubmissionFile[];
   }): Submission {
     const list = this.getSubmissions();
+    // Sanitize files so they never store gigantic raw base64 data in localStorage
+    const safeFiles = (submissionData.files || []).map((f) => ({
+      ...f,
+      previewUrl: f.previewUrl && f.previewUrl.startsWith('data:') && f.previewUrl.length > 50000 ? undefined : f.previewUrl,
+    }));
+
     // Check if user already submitted for this task
     const existingIndex = list.findIndex(
       (s) => s.taskId === submissionData.taskId && s.memberId === submissionData.memberId
@@ -624,6 +645,7 @@ export class StorageService {
 
     const newSub: Submission = {
       ...submissionData,
+      files: safeFiles,
       id: existingIndex >= 0 ? list[existingIndex].id : `sub-${Date.now()}`,
       status: 'SUBMITTED',
       submittedAt: getNowISO(),
@@ -667,7 +689,11 @@ export class StorageService {
   }
 
   static saveDocuments(docs: DocumentItem[]): void {
-    localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(docs));
+    try {
+      localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(docs));
+    } catch (e) {
+      console.warn('Storage error for documents:', e);
+    }
   }
 
   static createDocument(

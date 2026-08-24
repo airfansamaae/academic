@@ -52,6 +52,15 @@ export default function App() {
 
   useEffect(() => {
     refreshData();
+
+    const handleAuthChange = (e: any) => {
+      const user = e.detail !== undefined ? e.detail : StorageService.getCurrentUser();
+      setCurrentUser(user);
+      refreshData();
+    };
+
+    window.addEventListener('academic-auth-change', handleAuthChange);
+    return () => window.removeEventListener('academic-auth-change', handleAuthChange);
   }, [refreshData]);
 
   // Handle Logout
@@ -63,9 +72,9 @@ export default function App() {
   };
 
   // Handle Login success
-  const handleLoginSuccess = () => {
-    const user = StorageService.getCurrentUser();
-    setCurrentUser(user);
+  const handleLoginSuccess = (user?: User) => {
+    const activeUser = user || StorageService.getCurrentUser();
+    setCurrentUser(activeUser);
     refreshData();
     setIsAuthOpen(false);
   };

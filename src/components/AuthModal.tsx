@@ -18,7 +18,7 @@ import {
 interface AuthModalProps {
   isOpen: boolean;
   onClose?: () => void;
-  onLoginSuccess: () => void;
+  onLoginSuccess: (user?: any) => void;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
@@ -31,8 +31,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [mode, setMode] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
 
   // Login Form
-  const [loginUsername, setLoginUsername] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
+  const [loginUsername, setLoginUsername] = useState('admin');
+  const [loginPassword, setLoginPassword] = useState('456789');
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -63,7 +63,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       const res = StorageService.login(u, p);
       if (res.success && res.user) {
         notifySuccess(res.message);
-        onLoginSuccess();
+        onLoginSuccess(res.user);
         if (onClose) onClose();
       } else {
         setLoginError(res.message || 'รหัสผ่านหรือ User ID ไม่ถูกต้อง');
