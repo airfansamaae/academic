@@ -43,7 +43,7 @@ export const ThaiDatePicker: React.FC<ThaiDatePickerProps> = ({
 
   // Parse initial date
   const parseDate = (val: string): Date => {
-    if (!val) return new Date();
+    if (!val || typeof val !== 'string') return new Date();
     const parts = val.split('-');
     if (parts.length === 3) {
       const y = parseInt(parts[0], 10);
@@ -62,13 +62,14 @@ export const ThaiDatePicker: React.FC<ThaiDatePickerProps> = ({
 
   // Format value to DD/MM/YYYY
   const formatDisplayDate = (val: string) => {
-    if (!val) return '';
+    if (!val || typeof val !== 'string') return '';
     const parts = val.split('-');
     if (parts.length === 3) {
       const y = parts[0];
-      const m = parts[1].padStart(2, '0');
-      const d = parts[2].padStart(2, '0');
-      const thaiYear = parseInt(y, 10) + 543;
+      const m = (parts[1] || '').padStart(2, '0');
+      const d = (parts[2] || '').padStart(2, '0');
+      const parsedYear = parseInt(y, 10);
+      const thaiYear = isNaN(parsedYear) ? y : parsedYear + 543;
       return `${d}/${m}/${y} (พ.ศ. ${thaiYear})`;
     }
     return val;

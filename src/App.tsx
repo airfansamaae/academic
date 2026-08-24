@@ -23,6 +23,7 @@ import { DocumentCenter } from './components/DocumentCenter';
 import { SettingsModal } from './components/SettingsModal';
 import { AuthModal } from './components/AuthModal';
 import { Footer } from './components/Footer';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { notifySuccess, notifyInfo } from './services/notifications';
 
 export default function App() {
@@ -139,52 +140,54 @@ export default function App() {
 
           {/* Right Main Content Area */}
           <section className="flex-1 min-w-0">
-            {activeTab === 'DASHBOARD' && (
-              <Dashboard
-                currentUser={currentUser}
-                tasks={tasks}
-                announcements={announcements}
-                submissions={submissions}
-                users={users}
-                onNavigateTab={(tab) => {
-                  setActiveTab(tab);
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
-                onSelectTaskToSubmit={(task) => {
-                  setPreSelectedTask(task);
-                  setActiveTab('ASSIGN_SUBMIT');
-                }}
-              />
-            )}
+            <ErrorBoundary onReset={refreshData}>
+              {activeTab === 'DASHBOARD' && (
+                <Dashboard
+                  currentUser={currentUser}
+                  tasks={tasks}
+                  announcements={announcements}
+                  submissions={submissions}
+                  users={users}
+                  onNavigateTab={(tab) => {
+                    setActiveTab(tab);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  onSelectTaskToSubmit={(task) => {
+                    setPreSelectedTask(task);
+                    setActiveTab('ASSIGN_SUBMIT');
+                  }}
+                />
+              )}
 
-            {activeTab === 'ASSIGN_SUBMIT' && (
-              <TaskAssignment
-                currentUser={currentUser}
-                tasks={tasks}
-                announcements={announcements}
-                submissions={submissions}
-                onRefreshData={refreshData}
-                preSelectedTask={preSelectedTask}
-              />
-            )}
+              {activeTab === 'ASSIGN_SUBMIT' && (
+                <TaskAssignment
+                  currentUser={currentUser}
+                  tasks={tasks}
+                  announcements={announcements}
+                  submissions={submissions}
+                  onRefreshData={refreshData}
+                  preSelectedTask={preSelectedTask}
+                />
+              )}
 
-            {activeTab === 'TRACKING_REVIEW' && (
-              <TrackingAndGrading
-                currentUser={currentUser}
-                tasks={tasks}
-                submissions={submissions}
-                users={users}
-                onRefreshData={refreshData}
-              />
-            )}
+              {activeTab === 'TRACKING_REVIEW' && (
+                <TrackingAndGrading
+                  currentUser={currentUser}
+                  tasks={tasks}
+                  submissions={submissions}
+                  users={users}
+                  onRefreshData={refreshData}
+                />
+              )}
 
-            {activeTab === 'DOCUMENT_CENTER' && (
-              <DocumentCenter
-                currentUser={currentUser}
-                documents={documents}
-                onRefreshData={refreshData}
-              />
-            )}
+              {activeTab === 'DOCUMENT_CENTER' && (
+                <DocumentCenter
+                  currentUser={currentUser}
+                  documents={documents}
+                  onRefreshData={refreshData}
+                />
+              )}
+            </ErrorBoundary>
           </section>
         </div>
       </main>

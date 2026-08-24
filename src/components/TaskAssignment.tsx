@@ -59,13 +59,18 @@ interface TaskAssignmentProps {
 
 export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
   currentUser,
-  tasks,
-  announcements,
-  submissions,
+  tasks = [],
+  announcements = [],
+  submissions = [],
   onRefreshData,
   preSelectedTask,
 }) => {
   const isAdmin = currentUser?.role === 'ADMIN';
+
+  // Safe arrays
+  const safeTasks = Array.isArray(tasks) ? tasks : [];
+  const safeAnnouncements = Array.isArray(announcements) ? announcements : [];
+  const safeSubmissions = Array.isArray(submissions) ? submissions : [];
 
   // Admin Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -85,23 +90,26 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
   const [adminListFilter, setAdminListFilter] = useState<'ALL' | 'TASK' | 'ANNOUNCEMENT'>('ALL');
 
   // Member Assigned Tasks Filter (only pending tasks for current member, sorted with nearest due date first)
-  const memberPendingTasks = tasks
+  const memberPendingTasks = safeTasks
     .filter((task) => {
+      if (!task || !task.id) return false;
       // Show only tasks that current member has NOT submitted yet
       if (!currentUser) return true;
-      const hasSubmitted = submissions.some(
-        (s) => s.taskId === task.id && s.memberId === currentUser.id
+      const hasSubmitted = safeSubmissions.some(
+        (s) => s && s.taskId === task.id && s.memberId === currentUser.id
       );
       return !hasSubmitted;
     })
     .sort((a, b) => {
       // Nearest due date on top (ascending order of dueDate)
-      return a.dueDate.localeCompare(b.dueDate);
+      const dateA = a?.dueDate || '';
+      const dateB = b?.dueDate || '';
+      return dateA.localeCompare(dateB);
     });
 
   // Member Submissions (tasks that member already submitted)
-  const memberCompletedSubmissions = submissions.filter(
-    (s) => s.memberId === currentUser?.id
+  const memberCompletedSubmissions = safeSubmissions.filter(
+    (s) => s && s.memberId === currentUser?.id
   );
 
   // Active submission modal or selected task for member
@@ -118,9 +126,10 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
 
   // Handle opening submission modal for a specific task
   const handleOpenSubmissionModal = (task: Task) => {
+    if (!task) return;
     setActiveTaskForSubmission(task);
     // Pre-fill subject with task title if empty
-    setSubmissionSubject(task.title);
+    setSubmissionSubject(task.title || '');
     setSubmissionDescription('');
     setUploadedFiles([]);
   };
@@ -131,28 +140,31 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     }
   }, [preSelectedTask, isAdmin]);
 
-  const isPastDue = (dateStr?: string) => {
-    if (!dateStr) return false;
+  const isPastDue = (dateStr?: string | null) => {
+    if (!dateStr || typeof dateStr !== 'string') return false;
     const todayStr = new Date().toISOString().split('T')[0];
     return dateStr < todayStr;
   };
 
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 B';
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes || bytes === 0) return '0 B';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + (sizes[i] || 'B');
   };
 
   const daysOfWeekThai = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
-  const formatThaiDate = (dateStr: string, includeDay: boolean = false) => {
-    if (!dateStr) return '-';
+  const formatThaiDate = (dateStr?: string | null, includeDay: boolean = false) => {
+    if (!dateStr || typeof dateStr !== 'string') return '-';
     try {
-      const [y, m, d] = dateStr.split('-');
+      const parts = dateStr.split('-');
+      if (parts.length < 3) return dateStr;
+      const [y, m, d] = parts;
       const parsedYear = parseInt(y, 10);
       const parsedMonth = parseInt(m, 10) - 1;
       const parsedDay = parseInt(d, 10);
+      if (isNaN(parsedYear) || isNaN(parsedMonth) || isNaN(parsedDay)) return dateStr;
       const thaiYear = parsedYear + 543;
 
       const dateObj = new Date(parsedYear, parsedMonth, parsedDay);
@@ -167,7 +179,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
       }
       return `${dayClean}/${monthClean}/${parsedYear}`;
     } catch {
-      return dateStr;
+      return dateStr || '-';
     }
   };
 
@@ -447,7 +459,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
-                ทั้งหมด ({tasks.length + announcements.length})
+                ทั้งหมด ({safeTasks.length + safeAnnouncements.length})
               </button>
               <button
                 type="button"
@@ -460,7 +472,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
               >
                 <span>📝 งานที่มอบหมาย</span>
                 <span className="bg-purple-100 text-purple-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
-                  {tasks.length}
+                  {safeTasks.length}
                 </span>
               </button>
               <button
@@ -474,7 +486,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
               >
                 <span>📢 ประกาศแจ้งเพื่อทราบ</span>
                 <span className="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
-                  {announcements.length}
+                  {safeAnnouncements.length}
                 </span>
               </button>
             </div>
@@ -493,12 +505,12 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                     รายการงานที่มอบหมายแล้ว
                   </span>
                   <span className="text-xs font-bold bg-purple-50 text-purple-700 px-2 py-0.5 rounded-md border border-purple-100">
-                    {tasks.length} รายการ
+                    {safeTasks.length} รายการ
                   </span>
                 </div>
               </div>
 
-              {tasks.length === 0 ? (
+              {safeTasks.length === 0 ? (
                 <div className="py-8 text-center text-slate-400 text-xs">
                   ยังไม่มีรายการงานที่มอบหมาย กดปุ่ม "+" ด้านบนเพื่อสร้างงานใหม่
                 </div>
@@ -515,8 +527,8 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {tasks.map((task) => {
-                        const taskSubmissions = submissions.filter((s) => s.taskId === task.id);
+                      {safeTasks.map((task) => {
+                        const taskSubmissions = safeSubmissions.filter((s) => s && s.taskId === task.id);
                         return (
                           <tr key={task.id} className="hover:bg-slate-50/80 transition-colors">
                             <td className="py-3.5 px-3">
@@ -594,18 +606,18 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                     รายการประกาศแจ้งเพื่อทราบทั้งหมด
                   </span>
                   <span className="text-xs font-bold bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md border border-amber-100">
-                    {announcements.length} รายการ
+                    {safeAnnouncements.length} รายการ
                   </span>
                 </div>
               </div>
 
-              {announcements.length === 0 ? (
+              {safeAnnouncements.length === 0 ? (
                 <div className="py-8 text-center text-slate-400 text-xs">
                   ยังไม่มีประกาศแจ้งเพื่อทราบ กดปุ่ม "+" เพื่อสร้างประกาศใหม่
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {announcements.map((ann) => (
+                  {safeAnnouncements.map((ann) => (
                     <div
                       key={ann.id}
                       className="p-4 rounded-2xl border border-amber-200 bg-amber-50/40 flex items-start justify-between gap-3 hover:border-amber-300 transition-colors"
@@ -1248,31 +1260,44 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
               </p>
             ) : (
               <div className="space-y-3">
-                {memberCompletedSubmissions.map((sub) => (
-                  <div
-                    key={sub.id}
-                    className="p-4 rounded-2xl border border-slate-200/80 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                  >
-                    <div className="space-y-1">
+                {memberCompletedSubmissions.map((sub) => {
+                  let formattedDate = '-';
+                  try {
+                    if (sub.submittedAt) {
+                      formattedDate = new Date(sub.submittedAt).toLocaleString('th-TH');
+                    }
+                  } catch {
+                    formattedDate = sub.submittedAt || '-';
+                  }
+
+                  const fileCount = Array.isArray(sub.files) ? sub.files.length : 0;
+
+                  return (
+                    <div
+                      key={sub.id}
+                      className="p-4 rounded-2xl border border-slate-200/80 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center space-x-2">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-emerald-100 text-emerald-800 border-emerald-300">
+                            ✓ ส่งงานเรียบร้อยแล้ว
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            ส่งเมื่อ: {formattedDate}
+                          </span>
+                        </div>
+                        <p className="text-sm font-bold text-slate-900">{sub.subject || '-'}</p>
+                        <p className="text-xs text-purple-700 font-medium">{sub.taskTitle || '-'}</p>
+                      </div>
+
                       <div className="flex items-center space-x-2">
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-emerald-100 text-emerald-800 border-emerald-300">
-                          ✓ ส่งงานเรียบร้อยแล้ว
-                        </span>
-                        <span className="text-xs text-slate-500">
-                          ส่งเมื่อ: {new Date(sub.submittedAt).toLocaleString('th-TH')}
+                        <span className="text-xs text-slate-600 bg-white px-2.5 py-1 rounded-lg border border-slate-200">
+                          {fileCount} ไฟล์แนบ
                         </span>
                       </div>
-                      <p className="text-sm font-bold text-slate-900">{sub.subject}</p>
-                      <p className="text-xs text-purple-700 font-medium">{sub.taskTitle}</p>
                     </div>
-
-                    <div className="flex items-center space-x-2">
-                      <span className="text-xs text-slate-600 bg-white px-2.5 py-1 rounded-lg border border-slate-200">
-                        {sub.files.length} ไฟล์แนบ
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
