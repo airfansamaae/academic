@@ -53,10 +53,25 @@ export default function App() {
   useEffect(() => {
     refreshData();
 
-    // Background sync with Cloudflare Worker D1
+    // Background sync with Cloudflare Worker D1 on startup
     StorageService.syncWithCloudflare().then(() => {
       refreshData();
     });
+
+    // Auto-sync when user returns to window tab
+    const handleFocus = () => {
+      StorageService.syncWithCloudflare().then(() => {
+        refreshData();
+      });
+    };
+    window.addEventListener('focus', handleFocus);
+
+    // Auto-polling sync every 15 seconds so changes made by others appear automatically
+    const syncInterval = setInterval(() => {
+      StorageService.syncWithCloudflare().then(() => {
+        refreshData();
+      });
+    }, 15000);
 
     const handleAuthChange = (e: any) => {
       const user = e.detail !== undefined ? e.detail : StorageService.getCurrentUser();
@@ -65,7 +80,11 @@ export default function App() {
     };
 
     window.addEventListener('academic-auth-change', handleAuthChange);
-    return () => window.removeEventListener('academic-auth-change', handleAuthChange);
+    return () => {
+      window.removeEventListener('academic-auth-change', handleAuthChange);
+      window.removeEventListener('focus', handleFocus);
+      clearInterval(syncInterval);
+    };
   }, [refreshData]);
 
   // Handle Logout

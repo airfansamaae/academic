@@ -31,8 +31,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [mode, setMode] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
 
   // Login Form
-  const [loginUsername, setLoginUsername] = useState('admin');
-  const [loginPassword, setLoginPassword] = useState('456789');
+  const [loginUsername, setLoginUsername] = useState(() => StorageService.getRememberedId());
+  const [loginPassword, setLoginPassword] = useState('');
+  const [rememberId, setRememberId] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -62,6 +63,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     try {
       const res = StorageService.login(u, p);
       if (res.success && res.user) {
+        if (rememberId) {
+          StorageService.setRememberedId(u);
+        } else {
+          StorageService.setRememberedId(null);
+        }
         notifySuccess(res.message);
         onLoginSuccess(res.user);
         if (onClose) onClose();
@@ -222,6 +228,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-0.5">
+              <label className="flex items-center space-x-2 text-slate-600 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={rememberId}
+                  onChange={(e) => setRememberId(e.target.checked)}
+                  className="w-4 h-4 text-purple-600 rounded-md border-slate-300 focus:ring-purple-500 cursor-pointer"
+                />
+                <span className="text-xs font-medium">จดจำ User ID นี้ไว้</span>
+              </label>
+              <span className="text-[11px] text-slate-400">ปลอดภัยเมื่อปิดแท็บ</span>
             </div>
 
             <button

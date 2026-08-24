@@ -23,6 +23,7 @@ const STORAGE_KEYS = {
   DOCUMENTS: 'academic_app_documents_v2',
   SETTINGS: 'academic_app_settings_v2',
   CURRENT_USER: 'academic_app_current_user_v2',
+  REMEMBERED_ID: 'academic_app_remembered_id_v2',
 };
 
 const getNowISO = () => new Date().toISOString();
@@ -342,35 +343,50 @@ export class StorageService {
   }
 
   static getCurrentUser(): User | null {
-    const raw = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
-    if (!raw) {
-      // Default to Master Admin so system is immediately verified & accessible
-      const defaultAdmin = INITIAL_USERS[0];
+    // Session-based user persistence (auto-logout on new page session/link open)
+    const sessionRaw = sessionStorage.getItem(STORAGE_KEYS.CURRENT_USER);
+    if (sessionRaw) {
       try {
-        localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(defaultAdmin));
-      } catch (e) {
-        console.warn('Cannot write default admin to localStorage:', e);
+        return JSON.parse(sessionRaw);
+      } catch {
+        // invalid session json
       }
-      return defaultAdmin;
     }
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return INITIAL_USERS[0];
-    }
+    return null;
   }
 
   static setCurrentUser(user: User | null): void {
     try {
       if (user) {
-        localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user));
+        sessionStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user));
       } else {
+        sessionStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
         localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
       }
       // Broadcast auth change event to ensure all views immediately re-render
       window.dispatchEvent(new CustomEvent('academic-auth-change', { detail: user }));
     } catch (e) {
-      console.error('Storage quota or save error for currentUser:', e);
+      console.error('Storage error for currentUser:', e);
+    }
+  }
+
+  static getRememberedId(): string {
+    try {
+      return localStorage.getItem(STORAGE_KEYS.REMEMBERED_ID) || 'admin';
+    } catch {
+      return 'admin';
+    }
+  }
+
+  static setRememberedId(id: string | null): void {
+    try {
+      if (id && id.trim()) {
+        localStorage.setItem(STORAGE_KEYS.REMEMBERED_ID, id.trim());
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.REMEMBERED_ID);
+      }
+    } catch (e) {
+      console.error('Storage error for rememberedId:', e);
     }
   }
 
@@ -401,6 +417,8 @@ export class StorageService {
 
     users.push(newUser);
     this.saveUsers(users);
+    // Real-time Cloudflare Sync
+    CloudflareApiService.syncUser(newUser);
     return {
       success: true,
       message: 'ลงทะเบียนสำเร็จ! กรุณารอผู้ดูแลระบบ (Admin) อนุมัติการเข้าใช้งาน',
@@ -775,6 +793,51 @@ export class StorageService {
   }
 
   /**
+   * Push all current local data up to Cloudflare D1
+   */
+  static async pushAllDataToCloudflare(): Promise<{ success: boolean; count: number }> {
+    try {
+      const tasks = this.getTasks();
+      const submissions = this.getSubmissions();
+      const docs = this.getDocuments();
+      const settings = this.getSettings();
+      const users = this.getUsers();
+
+      let count = 0;
+
+      // Sync tasks
+      for (const t of tasks) {
+        await CloudflareApiService.syncTask(t);
+        count++;
+      }
+
+      // Sync submissions
+      for (const s of submissions) {
+        await CloudflareApiService.syncSubmission(s);
+        count++;
+      }
+
+      // Sync docs
+      for (const d of docs) {
+        await CloudflareApiService.syncDocument(d);
+        count++;
+      }
+
+      // Sync settings & users
+      await CloudflareApiService.syncSettings(settings);
+      for (const u of users) {
+        await CloudflareApiService.syncUser(u);
+        count++;
+      }
+
+      return { success: true, count };
+    } catch (err) {
+      console.error('Error pushing data to Cloudflare:', err);
+      return { success: false, count: 0 };
+    }
+  }
+
+  /**
    * Background Hydration from Cloudflare D1
    */
   static async syncWithCloudflare(): Promise<void> {
@@ -782,14 +845,27 @@ export class StorageService {
       const data = await CloudflareApiService.fetchAllData();
       if (!data) return;
 
+      // If Cloudflare D1 has data, use it
       if (data.tasks && data.tasks.length > 0) {
         this.saveTasks(data.tasks);
+      } else {
+        // If Cloudflare is empty, push current local tasks so other users will see them immediately
+        const currentTasks = this.getTasks();
+        if (currentTasks.length > 0) {
+          for (const t of currentTasks) {
+            CloudflareApiService.syncTask(t);
+          }
+        }
       }
+
       if (data.submissions && data.submissions.length > 0) {
         this.saveSubmissions(data.submissions);
       }
       if (data.documents && data.documents.length > 0) {
         this.saveDocuments(data.documents);
+      }
+      if (data.settings && Object.keys(data.settings).length > 0) {
+        this.saveSettings(data.settings);
       }
     } catch (err) {
       console.log('Background Cloudflare Sync skipped or failed:', err);
