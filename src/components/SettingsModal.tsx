@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { User, SystemSettings } from '../types';
 import { StorageService } from '../services/storage';
+import { uploadFileToGoogleDrive } from '../services/driveUpload';
 import {
   notifySuccess,
   notifyError,
@@ -133,32 +134,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   }, [currentUser, settings, isOpen]);
 
-  // Handle Avatar Upload with image compression
+  // Handle Avatar Upload directly to Google Drive
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       try {
         const compressed = await compressImageFile(file, 300, 300, 0.85);
-        if (compressed) {
-          setAvatarUrl(compressed);
-          notifySuccess('อัปโหลดและปรับขนาดรูปภาพโปรไฟล์เรียบร้อยแล้ว');
+        setAvatarUrl(compressed); // Instant responsive local preview
+
+        // Upload to Google Drive in parallel
+        const driveResult = await uploadFileToGoogleDrive(file);
+        if (driveResult.fileUrl) {
+          setAvatarUrl(driveResult.fileUrl);
         }
+        notifySuccess('อัปโหลดรูปภาพโปรไฟล์เรียบร้อยแล้ว ✨');
       } catch (err) {
         console.error('Avatar upload error:', err);
       }
     }
   };
 
-  // Handle Logo Upload with image compression
+  // Handle Logo Upload directly to Google Drive
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       try {
         const compressed = await compressImageFile(file, 400, 400, 0.85);
-        if (compressed) {
-          setSchoolLogoUrl(compressed);
-          notifySuccess('อัปโหลดและปรับขนาดโลโก้สถานศึกษาเรียบร้อยแล้ว');
+        setSchoolLogoUrl(compressed); // Instant responsive preview
+
+        // Upload to Google Drive in parallel
+        const driveResult = await uploadFileToGoogleDrive(file);
+        if (driveResult.fileUrl) {
+          setSchoolLogoUrl(driveResult.fileUrl);
         }
+        notifySuccess('อัปโหลดโลโก้สถานศึกษาเรียบร้อยแล้ว ✨');
       } catch (err) {
         console.error('Logo upload error:', err);
       }

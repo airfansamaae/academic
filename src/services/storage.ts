@@ -7,6 +7,7 @@ import {
   SystemSettings,
   SubmissionFile,
 } from '../types';
+import { CloudflareApiService, CLOUDFLARE_WORKER_URL } from './cloudflareApi';
 
 export const GDRIVE_FOLDER_ID = '1oOywsmTzdy1CMJDQuzNk9yJhH0lwWVZu';
 export const GDRIVE_FOLDER_URL = `https://drive.google.com/drive/folders/${GDRIVE_FOLDER_ID}`;
@@ -474,7 +475,9 @@ export class StorageService {
   static approveUser(userId: string): void {
     const users = this.getUsers().map((u) => {
       if (u.id === userId) {
-        return { ...u, status: 'ACTIVE' as const, updatedAt: getNowISO() };
+        const updated = { ...u, status: 'ACTIVE' as const, updatedAt: getNowISO() };
+        CloudflareApiService.syncUser(updated);
+        return updated;
       }
       return u;
     });
@@ -494,6 +497,7 @@ export class StorageService {
           : u
       );
       this.saveUsers(users);
+      CloudflareApiService.syncUser(updatedUser);
 
       const currentUser = this.getCurrentUser();
       if (
@@ -538,14 +542,19 @@ export class StorageService {
     };
     tasks.unshift(newTask);
     this.saveTasks(tasks);
+    // Real-time Cloudflare Sync
+    CloudflareApiService.syncTask(newTask);
     return newTask;
   }
 
   static updateTask(task: Task): void {
+    const updatedTask = { ...task, updatedAt: getNowISO() };
     const tasks = this.getTasks().map((t) =>
-      t.id === task.id ? { ...task, updatedAt: getNowISO() } : t
+      t.id === task.id ? updatedTask : t
     );
     this.saveTasks(tasks);
+    // Real-time Cloudflare Sync
+    CloudflareApiService.syncTask(updatedTask);
   }
 
   static deleteTask(taskId: string): void {
@@ -659,14 +668,19 @@ export class StorageService {
     }
 
     this.saveSubmissions(list);
+    // Real-time Cloudflare Sync
+    CloudflareApiService.syncSubmission(newSub);
     return newSub;
   }
 
   static updateSubmission(submission: Submission): void {
+    const updatedSub = { ...submission, updatedAt: getNowISO() };
     const list = this.getSubmissions().map((s) =>
-      s.id === submission.id ? { ...submission, updatedAt: getNowISO() } : s
+      s.id === submission.id ? updatedSub : s
     );
     this.saveSubmissions(list);
+    // Real-time Cloudflare Sync
+    CloudflareApiService.syncSubmission(updatedSub);
   }
 
   static deleteSubmission(submissionId: string): void {
@@ -709,14 +723,19 @@ export class StorageService {
     };
     list.unshift(newDoc);
     this.saveDocuments(list);
+    // Real-time Cloudflare Sync
+    CloudflareApiService.syncDocument(newDoc);
     return newDoc;
   }
 
   static updateDocument(doc: DocumentItem): void {
+    const updatedDoc = { ...doc, updatedAt: getNowISO() };
     const list = this.getDocuments().map((d) =>
-      d.id === doc.id ? { ...doc, updatedAt: getNowISO() } : d
+      d.id === doc.id ? updatedDoc : d
     );
     this.saveDocuments(list);
+    // Real-time Cloudflare Sync
+    CloudflareApiService.syncDocument(updatedDoc);
   }
 
   static deleteDocument(id: string): void {
@@ -748,8 +767,32 @@ export class StorageService {
     try {
       const updated = { ...settings, updatedAt: getNowISO() };
       localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(updated));
+      // Real-time Cloudflare Sync
+      CloudflareApiService.syncSettings(updated);
     } catch (e) {
       console.error('Storage quota or save error for settings:', e);
+    }
+  }
+
+  /**
+   * Background Hydration from Cloudflare D1
+   */
+  static async syncWithCloudflare(): Promise<void> {
+    try {
+      const data = await CloudflareApiService.fetchAllData();
+      if (!data) return;
+
+      if (data.tasks && data.tasks.length > 0) {
+        this.saveTasks(data.tasks);
+      }
+      if (data.submissions && data.submissions.length > 0) {
+        this.saveSubmissions(data.submissions);
+      }
+      if (data.documents && data.documents.length > 0) {
+        this.saveDocuments(data.documents);
+      }
+    } catch (err) {
+      console.log('Background Cloudflare Sync skipped or failed:', err);
     }
   }
 }

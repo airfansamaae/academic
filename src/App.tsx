@@ -53,6 +53,11 @@ export default function App() {
   useEffect(() => {
     refreshData();
 
+    // Background sync with Cloudflare Worker D1
+    StorageService.syncWithCloudflare().then(() => {
+      refreshData();
+    });
+
     const handleAuthChange = (e: any) => {
       const user = e.detail !== undefined ? e.detail : StorageService.getCurrentUser();
       setCurrentUser(user);
