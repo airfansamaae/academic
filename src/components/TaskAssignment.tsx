@@ -230,7 +230,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
             notifySuccess('อัปเดตข้อมูลงานที่มอบหมายสำเร็จ ✨');
           }
         } else {
-          notifyInfo(`กำลังเตรียมโฟลเดอร์ Google Drive สำหรับงาน: "${modalTitle.trim()}"...`);
+          // Fast task creation with dedicated storage folder
           const folderRes = await createGoogleDriveFolder(modalTitle.trim());
 
           StorageService.createTask({
@@ -242,7 +242,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
             gDriveFolderId: folderRes.folderId,
             gDriveFolderUrl: folderRes.folderUrl,
           });
-          notifySuccess(`บันทึกการมอบหมายงานและสร้างโฟลเดอร์ใน Google Drive สำเร็จ! 📁✨`);
+          notifySuccess(`บันทึกการมอบหมายงานสำเร็จ เรียบร้อยแล้ว ✨`);
         }
       } else {
         // Announcement
@@ -301,14 +301,13 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     }
   };
 
-  // --- Member Multi-file Upload to Google Drive via Apps Script Web App (Parallel Fast Upload) ---
+  // --- Member Multi-file Upload (Parallel Fast Upload) ---
   const handleFilesChosen = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
     setIsUploading(true);
 
     const fileList = Array.from(files);
-    notifyInfo(`กำลังประมวลผลและอัปโหลด ${fileList.length} ไฟล์...`);
 
     try {
       const uploadPromises = fileList.map(async (file, i) => {
@@ -338,10 +337,10 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
 
       const uploadedResults = await Promise.all(uploadPromises);
       setUploadedFiles((prev) => [...prev, ...uploadedResults]);
-      notifySuccess(`อัปโหลดและแนบ ${uploadedResults.length} ไฟล์เรียบร้อยแล้ว 🚀✨`);
+      notifySuccess(`แนบ ${uploadedResults.length} ไฟล์เรียบร้อยแล้ว ✨`);
     } catch (err) {
       console.error('Parallel upload error:', err);
-      notifyError('เกิดข้อผิดพลาดในการอัปโหลดไฟล์');
+      notifyError('เกิดข้อผิดพลาดในการแนบไฟล์');
     } finally {
       setIsUploading(false);
     }
@@ -1086,8 +1085,9 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                         <UploadCloud className="w-4 h-4 text-emerald-600" />
                         <span>3. อัปโหลดไฟล์งาน (รองรับหลายไฟล์พร้อมกัน) <span className="text-rose-500">*</span></span>
                       </label>
-                      <span className="text-[11px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                        บันทึกลง Google Drive
+                      <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center space-x-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span>แนบไฟล์เอกสาร</span>
                       </span>
                     </div>
 
@@ -1131,13 +1131,27 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                       </div>
                     </div>
 
-                    {/* Loading bar when uploading */}
+                    {/* Loading bar with symbols when uploading */}
                     {isUploading && (
-                      <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center space-x-3">
-                        <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
-                        <p className="text-xs font-semibold text-emerald-800">
-                          กำลังประมวลผลและอัปโหลดไฟล์เข้าสู่ Google Drive...
-                        </p>
+                      <div className="p-3.5 bg-emerald-50/90 rounded-2xl border border-emerald-200/90 flex items-center justify-between shadow-2xs">
+                        <div className="flex items-center space-x-3">
+                          <div className="relative flex items-center justify-center w-8 h-8 rounded-xl bg-emerald-100 text-emerald-600 shrink-0">
+                            <div className="w-5 h-5 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin"></div>
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-emerald-900">
+                              กำลังประมวลผลและแนบไฟล์...
+                            </p>
+                            <p className="text-[10px] text-emerald-700">
+                              ระบบกำลังจัดเตรียมไฟล์งาน กรุณารอสักครู่
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-1.5 pr-1">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-bounce [animation-delay:-0.3s]"></span>
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-bounce [animation-delay:-0.15s]"></span>
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-bounce"></span>
+                        </div>
                       </div>
                     )}
 

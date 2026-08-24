@@ -199,12 +199,12 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
       const uploadResult = await uploadFileToGoogleDrive(file);
       setDocFileUrl(uploadResult.fileUrl || GDRIVE_FOLDER_URL);
       setIsUploading(false);
-      notifySuccess(`อัปโหลดไฟล์ "${file.name}" เข้า Google Drive เรียบร้อยแล้ว 🚀`);
+      notifySuccess(`แนบไฟล์ "${file.name}" เรียบร้อยแล้ว ✨`);
     } catch (err) {
       console.error('Upload error in Document Center:', err);
       setDocFileUrl(GDRIVE_FOLDER_URL);
       setIsUploading(false);
-      notifySuccess(`แนบไฟล์ ${file.name} เรียบร้อยแล้ว`);
+      notifySuccess(`แนบไฟล์ ${file.name} เรียบร้อยแล้ว ✨`);
     }
   };
 
