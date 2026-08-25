@@ -115,14 +115,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       });
 
       if (res.success) {
-        setRegSuccess('ลงทะเบียนสำเร็จ! กำลังสลับไปหน้าเข้าสู่ระบบ...');
         notifySuccess('ลงทะเบียนสำเร็จ!', res.message);
-        setTimeout(() => {
-          setMode('LOGIN');
-          setLoginUsername(un);
-          setLoginPassword(pw);
-          setRegSuccess('');
-        }, 1500);
+        setMode('LOGIN');
+        setLoginUsername(un);
+        setLoginPassword(pw);
+        setRegFullName('');
+        setRegUsername('');
+        setRegPassword('');
+        setRegSuccess('');
       } else {
         setRegError(res.message);
         notifyError(res.message);

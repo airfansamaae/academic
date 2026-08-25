@@ -30,29 +30,39 @@ export class CloudflareApiService {
   }
 
   /**
+   * Fast fetch helper with strict AbortController timeout
+   */
+  private static async fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 3500): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timer);
+      return res;
+    } catch (err) {
+      clearTimeout(timer);
+      throw err;
+    }
+  }
+
+  /**
    * Fetch all database records from Cloudflare D1
    */
   public static async fetchAllData(): Promise<CloudflareSyncPayload | null> {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
-
-      const response = await fetch(`${this.workerUrl}/api/all-data`, {
+      const response = await this.fetchWithTimeout(`${this.workerUrl}/api/all-data`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
         },
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
+      }, 4000);
 
       if (response.ok) {
         const data = await response.json();
         return data as CloudflareSyncPayload;
       }
     } catch (err) {
-      console.warn('Cloudflare fetchAllData notice (using local/fallback):', err);
+      // Non-blocking fallback
     }
     return null;
   }
@@ -62,7 +72,7 @@ export class CloudflareApiService {
    */
   public static async syncTask(task: Task): Promise<boolean> {
     try {
-      const response = await fetch(`${this.workerUrl}/api/tasks`, {
+      const response = await this.fetchWithTimeout(`${this.workerUrl}/api/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -78,10 +88,9 @@ export class CloudflareApiService {
           createdAt: task.createdAt,
           updatedAt: task.updatedAt,
         }),
-      });
+      }, 3500);
       return response.ok;
     } catch (err) {
-      console.warn('Cloudflare syncTask warning:', err);
       return false;
     }
   }
@@ -91,7 +100,7 @@ export class CloudflareApiService {
    */
   public static async syncSubmission(sub: Submission): Promise<boolean> {
     try {
-      const response = await fetch(`${this.workerUrl}/api/submissions`, {
+      const response = await this.fetchWithTimeout(`${this.workerUrl}/api/submissions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -109,10 +118,9 @@ export class CloudflareApiService {
           submittedAt: sub.submittedAt,
           updatedAt: sub.updatedAt,
         }),
-      });
+      }, 3500);
       return response.ok;
     } catch (err) {
-      console.warn('Cloudflare syncSubmission warning:', err);
       return false;
     }
   }
@@ -122,7 +130,7 @@ export class CloudflareApiService {
    */
   public static async syncDocument(doc: DocumentItem): Promise<boolean> {
     try {
-      const response = await fetch(`${this.workerUrl}/api/documents`, {
+      const response = await this.fetchWithTimeout(`${this.workerUrl}/api/documents`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -137,10 +145,9 @@ export class CloudflareApiService {
           uploadedBy: doc.uploadedBy,
           createdAt: doc.createdAt,
         }),
-      });
+      }, 3500);
       return response.ok;
     } catch (err) {
-      console.warn('Cloudflare syncDocument warning:', err);
       return false;
     }
   }
@@ -153,11 +160,10 @@ export class CloudflareApiService {
       const username = user.username || user.fullName || user.id;
       const password = user.password || '123456';
       const school = user.school || 'โรงเรียนวิชาการวิทยาคาร';
-      // Encode username and password cleanly inside department separator so worker database without username/password column preserves all credentials
       const encodedDepartment = `${school}@@@${username}@@@${password}`;
       const avatarUrl = user.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(username)}`;
 
-      const response = await fetch(`${this.workerUrl}/api/users`, {
+      const response = await this.fetchWithTimeout(`${this.workerUrl}/api/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -173,10 +179,9 @@ export class CloudflareApiService {
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
         }),
-      });
+      }, 3500);
       return response.ok;
     } catch (err) {
-      console.warn('Cloudflare syncUser warning:', err);
       return false;
     }
   }
@@ -186,14 +191,13 @@ export class CloudflareApiService {
    */
   public static async syncSettings(settings: SystemSettings): Promise<boolean> {
     try {
-      const response = await fetch(`${this.workerUrl}/api/settings`, {
+      const response = await this.fetchWithTimeout(`${this.workerUrl}/api/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings),
-      });
+      }, 3500);
       return response.ok;
     } catch (err) {
-      console.warn('Cloudflare syncSettings warning:', err);
       return false;
     }
   }

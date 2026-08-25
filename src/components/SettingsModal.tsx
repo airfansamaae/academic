@@ -144,40 +144,46 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   }, [currentUser, settings, isOpen, activeTab, onRefreshData]);
 
-  // Handle Avatar Upload directly to Google Drive
+  // Handle Avatar Upload directly to Profile & Cloud
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       try {
-        const compressed = await compressImageFile(file, 300, 300, 0.85);
-        setAvatarUrl(compressed); // Instant responsive local preview
-
-        // Upload to Google Drive in parallel
-        const driveResult = await uploadFileToGoogleDrive(file);
-        if (driveResult.fileUrl) {
-          setAvatarUrl(driveResult.fileUrl);
+        const compressed = await compressImageFile(file, 250, 250, 0.85);
+        if (compressed) {
+          setAvatarUrl(compressed);
+          // Auto-save user profile with new avatar immediately
+          if (currentUser) {
+            const updated: User = { ...currentUser, avatarUrl: compressed };
+            StorageService.updateUser(updated);
+            onRefreshData();
+          }
+          notifySuccess('เปลี่ยนรูปภาพโปรไฟล์เรียบร้อยแล้ว ✨');
+          // Backup file to Google Drive in parallel
+          uploadFileToGoogleDrive(file).catch(() => {});
         }
-        notifySuccess('อัปโหลดรูปภาพโปรไฟล์เรียบร้อยแล้ว ✨');
       } catch (err) {
         console.error('Avatar upload error:', err);
       }
     }
   };
 
-  // Handle Logo Upload directly to Google Drive
+  // Handle Logo Upload directly to Settings & Cloud
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       try {
-        const compressed = await compressImageFile(file, 400, 400, 0.85);
-        setSchoolLogoUrl(compressed); // Instant responsive preview
-
-        // Upload to Google Drive in parallel
-        const driveResult = await uploadFileToGoogleDrive(file);
-        if (driveResult.fileUrl) {
-          setSchoolLogoUrl(driveResult.fileUrl);
+        const compressed = await compressImageFile(file, 300, 300, 0.85);
+        if (compressed) {
+          setSchoolLogoUrl(compressed);
+          // Auto-save school settings with new logo immediately
+          const updated: SystemSettings = { ...settings, schoolLogoUrl: compressed };
+          StorageService.saveSettings(updated);
+          onRefreshData();
+          notifySuccess('เปลี่ยนโลโก้สถานศึกษาเรียบร้อยแล้ว ✨');
+          // Backup file to Google Drive in parallel
+          uploadFileToGoogleDrive(file).catch(() => {});
         }
-        notifySuccess('อัปโหลดโลโก้สถานศึกษาเรียบร้อยแล้ว ✨');
       } catch (err) {
         console.error('Logo upload error:', err);
       }

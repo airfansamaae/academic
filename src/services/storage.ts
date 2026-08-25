@@ -418,14 +418,13 @@ export class StorageService {
     password?: string;
     school?: string;
   }): Promise<{ success: boolean; message: string; user?: User }> {
-    try {
-      // Sync first to ensure we have latest users from other browsers
-      await this.syncWithCloudflare();
-    } catch {}
-
     const users = this.getUsers();
     const cleanUsername = userData.username.trim();
-    const existing = users.find((u) => u.username.toLowerCase() === cleanUsername.toLowerCase());
+    const existing = users.find(
+      (u) =>
+        u.username.toLowerCase() === cleanUsername.toLowerCase() ||
+        u.id.toLowerCase() === `user-${cleanUsername.toLowerCase()}`
+    );
     if (existing) {
       return { success: false, message: 'ชื่อผู้ใช้นี้ (User ID) มีในระบบแล้ว กรุณาใช้ชื่ออื่น' };
     }
@@ -445,14 +444,10 @@ export class StorageService {
 
     users.push(newUser);
     this.saveUsers(users);
-    
-    // Real-time Cloudflare Sync and Broadcast
-    try {
-      await CloudflareApiService.syncUser(newUser);
-    } catch (e) {
-      console.warn('Cloudflare user sync warning:', e);
-    }
     broadcastLocalChange('USER_REGISTERED', newUser);
+
+    // Non-blocking real-time Cloudflare Sync in background
+    CloudflareApiService.syncUser(newUser).catch(() => {});
 
     return {
       success: true,
@@ -585,7 +580,6 @@ export class StorageService {
           : u
       );
       this.saveUsers(users);
-      await CloudflareApiService.syncUser(updatedUser);
       broadcastLocalChange('USER_UPDATED', updatedUser);
 
       const currentUser = this.getCurrentUser();
@@ -596,6 +590,9 @@ export class StorageService {
       ) {
         this.setCurrentUser({ ...updatedUser, updatedAt: getNowISO() });
       }
+
+      // Sync to cloud in background non-blockingly
+      CloudflareApiService.syncUser(updatedUser).catch(() => {});
     } catch (e) {
       console.error('Storage quota or save error for updateUser:', e);
     }
@@ -921,6 +918,8 @@ export class StorageService {
     }
   }
 
+  private static isSyncing = false;
+
   /**
    * Background Hydration and Cross-Browser Real-Time Sync from Cloudflare D1
    */
@@ -929,6 +928,11 @@ export class StorageService {
     newTasks: Task[];
     newSubmissions: Submission[];
   }> {
+    if (this.isSyncing) {
+      return { hasChanges: false, newTasks: [], newSubmissions: [] };
+    }
+    this.isSyncing = true;
+
     try {
       const data = await CloudflareApiService.fetchAllData();
       if (!data) return { hasChanges: false, newTasks: [], newSubmissions: [] };
@@ -988,17 +992,24 @@ export class StorageService {
 
           if (existingIndex >= 0) {
             const cur = mergedUsers[existingIndex];
+            const hasCustomAvatar = cur.avatarUrl && !cur.avatarUrl.includes('dicebear');
+            const avatarUrl = mappedUser.avatarUrl && !mappedUser.avatarUrl.includes('dicebear')
+              ? mappedUser.avatarUrl
+              : (hasCustomAvatar ? cur.avatarUrl : mappedUser.avatarUrl);
+
             const hasDiff =
               cur.status !== mappedUser.status ||
               cur.role !== mappedUser.role ||
               cur.password !== mappedUser.password ||
               cur.fullName !== mappedUser.fullName ||
-              cur.school !== mappedUser.school;
+              cur.school !== mappedUser.school ||
+              cur.avatarUrl !== avatarUrl;
 
             if (hasDiff) {
               mergedUsers[existingIndex] = {
                 ...cur,
                 ...mappedUser,
+                avatarUrl,
                 password: mappedUser.password !== '123456' ? mappedUser.password : (cur.password || mappedUser.password),
               };
               hasChanges = true;
@@ -1128,6 +1139,8 @@ export class StorageService {
     } catch (err) {
       console.warn('Background Cloudflare Sync notice:', err);
       return { hasChanges: false, newTasks: [], newSubmissions: [] };
+    } finally {
+      this.isSyncing = false;
     }
   }
 }
