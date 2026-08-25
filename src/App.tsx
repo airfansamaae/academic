@@ -111,14 +111,13 @@ export default function App() {
   }, [refreshData]);
 
   useEffect(() => {
-    refreshData();
-    performLiveSync();
     recordUserActivity();
+    performLiveSync();
 
-    // Fast polling (every 3.5 seconds) for real-time responsiveness across different Google Chrome browsers / devices
+    // Fast polling (every 4 seconds) for real-time responsiveness across different Google Chrome browsers / devices
     const syncInterval = setInterval(() => {
       performLiveSync();
-    }, 3500);
+    }, 4000);
 
     // Periodic inactivity check every 10 seconds
     const inactivityInterval = setInterval(() => {
@@ -145,12 +144,10 @@ export default function App() {
         recordUserActivity();
       }
       refreshData();
-      performLiveSync();
     };
 
     const handleRealtimeBroadcast = () => {
       refreshData();
-      performLiveSync();
     };
 
     // User activity listeners

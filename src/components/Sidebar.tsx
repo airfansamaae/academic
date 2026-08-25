@@ -13,7 +13,7 @@ import { NavigationTab, UserRole } from '../types';
 
 // Web App External URL for Lunch System (Backend link hidden in UI)
 const LUNCH_SYSTEM_URL =
-  'https://script.google.com/macros/s/AKfycbzgmOBgQ4534lIiTVuUikzaEF0PXofybzvaYZlXPvFeY4U8d3KrcpXZ-MsooaHSgIQ/exec';
+  'https://script.google.com/a/macros/krabiedu.go.th/s/AKfycbzgmOBgQ4534lIiTVuUikzaEF0PXofybzvaYZlXPvFeY4U8d3KrcpXZ-MsooaHSgIQ/exec';
 
 interface SidebarProps {
   activeTab: NavigationTab;
