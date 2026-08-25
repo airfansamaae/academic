@@ -30,6 +30,7 @@ const STORAGE_KEYS = {
   DELETED_DOCUMENTS: 'academic_app_deleted_docs_v2',
   DELETED_SUBMISSIONS: 'academic_app_deleted_subs_v2',
   DELETED_ANNOUNCEMENTS: 'academic_app_deleted_anns_v2',
+  DELETED_USERS: 'academic_app_deleted_users_v2',
 };
 
 const getNowISO = () => new Date().toISOString();
@@ -446,6 +447,9 @@ export class StorageService {
       updatedAt: getNowISO(),
     };
 
+    this.removeDeletedUserId(newUser.id);
+    this.removeDeletedUserId(cleanUsername);
+
     users.push(newUser);
     this.saveUsers(users);
     broadcastLocalChange('USER_REGISTERED', newUser);
@@ -552,6 +556,9 @@ export class StorageService {
   }
 
   static async approveUser(userId: string): Promise<void> {
+    // 1. Remove from deleted tombstones if previously present
+    this.removeDeletedUserId(userId);
+
     let targetUser: User | null = null;
     const users = this.getUsers().map((u) => {
       if (u.id === userId || u.username.toLowerCase() === userId.toLowerCase()) {
@@ -571,8 +578,19 @@ export class StorageService {
   }
 
   static async deleteUser(userId: string): Promise<void> {
-    const users = this.getUsers().filter((u) => u.id !== userId && u.username.toLowerCase() !== userId.toLowerCase());
+    // 1. Mark as permanently deleted tombstone
+    this.addDeletedUserId(userId);
+
+    // 2. Remove user from local storage immediately
+    const users = this.getUsers().filter(
+      (u) => u.id !== userId && u.username.toLowerCase() !== userId.toLowerCase()
+    );
     this.saveUsers(users);
+
+    // 3. Request deletion on Cloudflare in background
+    CloudflareApiService.deleteUser(userId).catch(() => {});
+
+    // 4. Broadcast deletion to all local tabs
     broadcastLocalChange('USER_DELETED', { id: userId });
   }
 
@@ -715,6 +733,39 @@ export class StorageService {
       const set = this.getDeletedAnnIds();
       set.add(id);
       localStorage.setItem(STORAGE_KEYS.DELETED_ANNOUNCEMENTS, JSON.stringify(Array.from(set)));
+    } catch {}
+  }
+
+  static getDeletedUserIds(): Set<string> {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.DELETED_USERS);
+      return new Set(raw ? JSON.parse(raw) : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  static addDeletedUserId(id: string): void {
+    try {
+      const set = this.getDeletedUserIds();
+      set.add(id);
+      set.add(id.toLowerCase());
+      if (id.startsWith('user-')) {
+        set.add(id.substring(5).toLowerCase());
+      }
+      localStorage.setItem(STORAGE_KEYS.DELETED_USERS, JSON.stringify(Array.from(set)));
+    } catch {}
+  }
+
+  static removeDeletedUserId(id: string): void {
+    try {
+      const set = this.getDeletedUserIds();
+      set.delete(id);
+      set.delete(id.toLowerCase());
+      if (id.startsWith('user-')) {
+        set.delete(id.substring(5).toLowerCase());
+      }
+      localStorage.setItem(STORAGE_KEYS.DELETED_USERS, JSON.stringify(Array.from(set)));
     } catch {}
   }
 
@@ -1037,13 +1088,20 @@ export class StorageService {
       const newTasks: Task[] = [];
       const newSubmissions: Submission[] = [];
 
-      // 1. Sync Users
+      // 1. Sync Users (Honor deletion tombstones)
       if (data.users && Array.isArray(data.users) && data.users.length > 0) {
-        const currentUsers = this.getUsers();
+        const deletedUserIds = this.getDeletedUserIds();
+        const currentUsers = this.getUsers().filter(
+          (u) => !deletedUserIds.has(u.id) && !deletedUserIds.has(u.username) && !deletedUserIds.has(u.username.toLowerCase())
+        );
         const mergedUsers: User[] = [...currentUsers];
 
         for (const rawUser of data.users) {
           const u = rawUser as any;
+          if (u.status === 'DELETED' || u._deleted === true) continue;
+          if (u.id && deletedUserIds.has(u.id)) continue;
+          if (u.username && (deletedUserIds.has(u.username) || deletedUserIds.has(u.username.toLowerCase()))) continue;
+
           const parts = (u.department || '').split('@@@');
           const school = parts[0] || 'โรงเรียนวิชาการวิทยาคาร';
           const explicitUsername = parts[1];
@@ -1063,6 +1121,8 @@ export class StorageService {
           }
           username = (username || '').trim();
 
+          if (deletedUserIds.has(username) || deletedUserIds.has(username.toLowerCase())) continue;
+
           const password = u.password || explicitPassword || u.passwordHash || '123456';
           const fullName = (u.fullName || username || '').trim();
 
@@ -1078,6 +1138,10 @@ export class StorageService {
             createdAt: u.createdAt || getNowISO(),
             updatedAt: u.updatedAt || u.createdAt || getNowISO(),
           };
+
+          if (deletedUserIds.has(mappedUser.id) || deletedUserIds.has(mappedUser.username.toLowerCase())) {
+            continue;
+          }
 
           const existingIndex = mergedUsers.findIndex(
             (local) =>
@@ -1121,8 +1185,12 @@ export class StorageService {
           mergedUsers.unshift(INITIAL_USERS[0]);
         }
 
-        if (hasChanges) {
-          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(mergedUsers));
+        const finalFilteredUsers = mergedUsers.filter(
+          (u) => !deletedUserIds.has(u.id) && !deletedUserIds.has(u.username) && !deletedUserIds.has(u.username.toLowerCase())
+        );
+
+        if (hasChanges || finalFilteredUsers.length !== currentUsers.length) {
+          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(finalFilteredUsers));
         }
       }
 

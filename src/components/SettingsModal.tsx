@@ -292,27 +292,49 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
-  // 4. Admin Member Approvals & Deletion
-  const handleApprove = async (userId: string) => {
-    await StorageService.approveUser(userId);
-    notifySuccess('อนุมัติการเข้าใช้งานของสมาชิกเรียบร้อยแล้ว');
-    onRefreshData();
-  };
+  // 4. Admin Member Approvals & Deletion with Zero-Latency Optimistic State
+  const [localUsers, setLocalUsers] = useState<User[]>(users);
 
-  const handleDeleteUser = async (userId: string) => {
-    const ok = await confirmDialog(
-      'ยืนยันการลบผู้ใช้นี้?',
-      'บัญชีผู้ใช้และสิทธิ์การเข้าใช้งานจะถูกลบออกจากระบบ'
+  useEffect(() => {
+    setLocalUsers(users);
+  }, [users]);
+
+  const handleApprove = async (userId: string) => {
+    // Instant optimistic update on UI
+    setLocalUsers((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, status: 'ACTIVE' as const } : u))
     );
-    if (ok) {
-      await StorageService.deleteUser(userId);
-      notifySuccess('ลบผู้ใช้งานสำเร็จ');
+    notifySuccess('อนุมัติการเข้าใช้งานของสมาชิกเรียบร้อยแล้ว ⚡');
+    try {
+      await StorageService.approveUser(userId);
       onRefreshData();
+    } catch (err) {
+      console.error('Approval error:', err);
     }
   };
 
-  const pendingUsers = users.filter((u) => u.status === 'PENDING');
-  const activeUsers = users.filter((u) => u.status === 'ACTIVE');
+  const handleDeleteUser = async (userId: string) => {
+    const target = localUsers.find((u) => u.id === userId);
+    const targetName = target?.fullName || 'ผู้ใช้นี้';
+    const ok = await confirmDialog(
+      `ยืนยันการลบ ${targetName}?`,
+      'บัญชีผู้ใช้และสิทธิ์การเข้าใช้งานจะถูกลบออกจากระบบอย่างถาวรทันที'
+    );
+    if (ok) {
+      // Instant optimistic removal from UI
+      setLocalUsers((prev) => prev.filter((u) => u.id !== userId));
+      notifySuccess(`ลบผู้ใช้งาน ${targetName} สำเร็จ`);
+      try {
+        await StorageService.deleteUser(userId);
+        onRefreshData();
+      } catch (err) {
+        console.error('Delete user error:', err);
+      }
+    }
+  };
+
+  const pendingUsers = localUsers.filter((u) => u.status === 'PENDING');
+  const activeUsers = localUsers.filter((u) => u.status === 'ACTIVE');
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">

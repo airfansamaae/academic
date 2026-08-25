@@ -250,6 +250,30 @@ export class CloudflareApiService {
   }
 
   /**
+   * Delete User from Cloudflare D1
+   */
+  public static async deleteUser(id: string): Promise<boolean> {
+    try {
+      const res = await this.fetchWithTimeout(`${this.workerUrl}/api/users/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, _deleted: true }),
+      }, 3500);
+
+      if (!res.ok) {
+        await this.fetchWithTimeout(`${this.workerUrl}/api/users/delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }),
+        }, 3500);
+      }
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  /**
    * Save / Sync User to Cloudflare D1
    */
   public static async syncUser(user: User): Promise<boolean> {
