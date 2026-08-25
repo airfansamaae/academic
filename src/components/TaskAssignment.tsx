@@ -333,11 +333,24 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
   const handleDeleteTask = async (taskId: string) => {
     const ok = await confirmDialog(
       'ยืนยันการลบงานนี้?',
-      'การลบงานจะทำให้ข้อมูลและรายงานที่เกี่ยวข้องถูกลบด้วย'
+      'การลบงานจะทำให้ภาระงานและรายการส่งงานที่เกี่ยวข้องทั้งหมดถูกลบออกจากระบบทั้งฝั่งแอดมินและสมาชิก'
     );
     if (ok) {
       StorageService.deleteTask(taskId);
       notifySuccess('ลบงานมอบหมายสำเร็จ');
+      onRefreshData();
+    }
+  };
+
+  const handleDeleteAllTasks = async () => {
+    if (adminSortedTasks.length === 0) return;
+    const ok = await confirmDialog(
+      '⚠️ ยืนยันการลบงานทั้งหมด?',
+      'งานมอบหมายทั้งหมด รวมถึงข้อมูลการส่งงานและคะแนนของสมาชิกทุกคนจะถูกลบออกจากระบบอย่างถาวรทั้งฝั่งแอดมินและสมาชิกทันที'
+    );
+    if (ok) {
+      StorageService.deleteAllTasks();
+      notifySuccess('ลบงานมอบหมายและรายการส่งงานทั้งหมดเรียบร้อยแล้ว');
       onRefreshData();
     }
   };
@@ -587,7 +600,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
           {/* Assigned Tasks Section (Admin) */}
           {(adminListFilter === 'ALL' || adminListFilter === 'TASK') && (
             <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-xs space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
                 <div className="flex items-center space-x-2">
                   <span className="text-base font-bold text-slate-800">
                     รายการงานที่มอบหมาย (เรียงตามกำหนดส่งใกล้ที่สุดอยู่บน)
@@ -596,6 +609,17 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                     {adminSortedTasks.length} รายการ
                   </span>
                 </div>
+                {adminSortedTasks.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteAllTasks}
+                    className="px-3 py-1.5 text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl transition-all flex items-center space-x-1.5 cursor-pointer shadow-2xs"
+                    title="ลบงานมอบหมายทั้งหมดออกจากระบบ"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                    <span>ลบงานทั้งหมด ({adminSortedTasks.length})</span>
+                  </button>
+                )}
               </div>
 
               {adminSortedTasks.length === 0 ? (
