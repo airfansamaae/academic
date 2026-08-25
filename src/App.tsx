@@ -24,7 +24,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { AuthModal } from './components/AuthModal';
 import { Footer } from './components/Footer';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { notifySuccess, notifyInfo, notifyNewTaskAlert } from './services/notifications';
+import { notifySuccess, notifyInfo } from './services/notifications';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(() => StorageService.getCurrentUser());
@@ -40,9 +40,6 @@ export default function App() {
   const [isAuthOpen, setIsAuthOpen] = useState(!currentUser);
   const [preSelectedTask, setPreSelectedTask] = useState<Task | null>(null);
 
-  const isFirstMountRef = useRef(true);
-  const knownTaskIdsRef = useRef<Set<string>>(new Set(StorageService.getTasks().map((t) => t.id)));
-
   // Sync data refresh callback
   const refreshData = useCallback(() => {
     setCurrentUser(StorageService.getCurrentUser());
@@ -54,30 +51,10 @@ export default function App() {
     setSettings(StorageService.getSettings());
   }, []);
 
-  // Real-time Cloudflare Sync and Task Assignment Notification Worker
+  // Real-time Cloudflare Background Sync
   const performLiveSync = useCallback(async () => {
     try {
       const res = await StorageService.syncWithCloudflare();
-
-      // Check if new tasks were assigned by Admin on another browser
-      if (!isFirstMountRef.current && res.newTasks && res.newTasks.length > 0) {
-        const freshlyAssigned = res.newTasks.filter((t) => !knownTaskIdsRef.current.has(t.id));
-        if (freshlyAssigned.length > 0) {
-          freshlyAssigned.forEach((t) => knownTaskIdsRef.current.add(t.id));
-          const latest = freshlyAssigned[freshlyAssigned.length - 1];
-
-          // Trigger sound and prominent alert with direct submission action
-          notifyNewTaskAlert(latest.title, latest.dueDate, () => {
-            setActiveTab('ASSIGN_SUBMIT');
-            setPreSelectedTask(latest);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          });
-        }
-      } else if (isFirstMountRef.current) {
-        isFirstMountRef.current = false;
-        StorageService.getTasks().forEach((t) => knownTaskIdsRef.current.add(t.id));
-      }
-
       if (res.hasChanges) {
         refreshData();
       }

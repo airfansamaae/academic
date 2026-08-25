@@ -26,6 +26,10 @@ const STORAGE_KEYS = {
   SETTINGS: 'academic_app_settings_v2',
   CURRENT_USER: 'academic_app_current_user_v2',
   REMEMBERED_ID: 'academic_app_remembered_id_v2',
+  DELETED_TASKS: 'academic_app_deleted_tasks_v2',
+  DELETED_DOCUMENTS: 'academic_app_deleted_docs_v2',
+  DELETED_SUBMISSIONS: 'academic_app_deleted_subs_v2',
+  DELETED_ANNOUNCEMENTS: 'academic_app_deleted_anns_v2',
 };
 
 const getNowISO = () => new Date().toISOString();
@@ -645,9 +649,95 @@ export class StorageService {
     broadcastLocalChange('TASK_UPDATED', updatedTask);
   }
 
+  // --- DELETION TOMBSTONES ---
+  static getDeletedTaskIds(): Set<string> {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.DELETED_TASKS);
+      return new Set(raw ? JSON.parse(raw) : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  static addDeletedTaskId(id: string): void {
+    try {
+      const set = this.getDeletedTaskIds();
+      set.add(id);
+      localStorage.setItem(STORAGE_KEYS.DELETED_TASKS, JSON.stringify(Array.from(set)));
+    } catch {}
+  }
+
+  static getDeletedDocIds(): Set<string> {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.DELETED_DOCUMENTS);
+      return new Set(raw ? JSON.parse(raw) : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  static addDeletedDocId(id: string): void {
+    try {
+      const set = this.getDeletedDocIds();
+      set.add(id);
+      localStorage.setItem(STORAGE_KEYS.DELETED_DOCUMENTS, JSON.stringify(Array.from(set)));
+    } catch {}
+  }
+
+  static getDeletedSubIds(): Set<string> {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.DELETED_SUBMISSIONS);
+      return new Set(raw ? JSON.parse(raw) : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  static addDeletedSubId(id: string): void {
+    try {
+      const set = this.getDeletedSubIds();
+      set.add(id);
+      localStorage.setItem(STORAGE_KEYS.DELETED_SUBMISSIONS, JSON.stringify(Array.from(set)));
+    } catch {}
+  }
+
+  static getDeletedAnnIds(): Set<string> {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.DELETED_ANNOUNCEMENTS);
+      return new Set(raw ? JSON.parse(raw) : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  static addDeletedAnnId(id: string): void {
+    try {
+      const set = this.getDeletedAnnIds();
+      set.add(id);
+      localStorage.setItem(STORAGE_KEYS.DELETED_ANNOUNCEMENTS, JSON.stringify(Array.from(set)));
+    } catch {}
+  }
+
   static deleteTask(taskId: string): void {
+    // 1. Mark task as permanently deleted
+    this.addDeletedTaskId(taskId);
+
+    // 2. Remove task from local storage
     const tasks = this.getTasks().filter((t) => t.id !== taskId);
     this.saveTasks(tasks);
+
+    // 3. Remove all submissions associated with this task
+    const allSubs = this.getSubmissions();
+    const subsToKeep = allSubs.filter((s) => s.taskId !== taskId);
+    const deletedSubs = allSubs.filter((s) => s.taskId === taskId);
+    deletedSubs.forEach((s) => this.addDeletedSubId(s.id));
+    this.saveSubmissions(subsToKeep);
+
+    // 4. Request deletion on Cloudflare D1
+    CloudflareApiService.deleteTask(taskId);
+    deletedSubs.forEach((s) => CloudflareApiService.deleteSubmission(s.id));
+
+    // 5. Broadcast deletion to all local tabs
     broadcastLocalChange('TASK_DELETED', { id: taskId });
   }
 
@@ -694,8 +784,10 @@ export class StorageService {
   }
 
   static deleteAnnouncement(id: string): void {
+    this.addDeletedAnnId(id);
     const list = this.getAnnouncements().filter((a) => a.id !== id);
     this.saveAnnouncements(list);
+    CloudflareApiService.deleteAnnouncement(id);
     broadcastLocalChange('ANNOUNCEMENT_DELETED', { id });
   }
 
@@ -778,8 +870,10 @@ export class StorageService {
   }
 
   static deleteSubmission(submissionId: string): void {
+    this.addDeletedSubId(submissionId);
     const list = this.getSubmissions().filter((s) => s.id !== submissionId);
     this.saveSubmissions(list);
+    CloudflareApiService.deleteSubmission(submissionId);
     broadcastLocalChange('SUBMISSION_DELETED', { id: submissionId });
   }
 
@@ -836,8 +930,10 @@ export class StorageService {
   }
 
   static deleteDocument(id: string): void {
+    this.addDeletedDocId(id);
     const list = this.getDocuments().filter((d) => d.id !== id);
     this.saveDocuments(list);
+    CloudflareApiService.deleteDocument(id);
     broadcastLocalChange('DOCUMENT_DELETED', { id });
   }
 
@@ -1030,12 +1126,17 @@ export class StorageService {
         }
       }
 
-      // 2. Sync Tasks
+      // 2. Sync Tasks (Honor deletion tombstones)
       if (data.tasks && Array.isArray(data.tasks)) {
+        const deletedTaskIds = this.getDeletedTaskIds();
         const currentTasks = this.getTasks();
         const currentTaskIds = new Set(currentTasks.map((t) => t.id));
 
-        const mappedTasks: Task[] = data.tasks.map((t: any) => ({
+        const nonDeletedCloudTasks = data.tasks.filter(
+          (t: any) => !deletedTaskIds.has(t.id) && t.status !== 'DELETED' && t._deleted !== true
+        );
+
+        const mappedTasks: Task[] = nonDeletedCloudTasks.map((t: any) => ({
           id: t.id,
           title: t.title || '',
           description: t.description || '',
@@ -1056,17 +1157,33 @@ export class StorageService {
           }
         }
 
-        if (mappedTasks.length > 0) {
-          localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(mappedTasks));
-        }
+        // Merge keeping locally created non-deleted tasks
+        const mergedTasksMap = new Map<string, Task>();
+        // Add mapped cloud tasks
+        mappedTasks.forEach((t) => mergedTasksMap.set(t.id, t));
+        // Add current local tasks if not deleted
+        currentTasks.forEach((t) => {
+          if (!deletedTaskIds.has(t.id) && !mergedTasksMap.has(t.id)) {
+            mergedTasksMap.set(t.id, t);
+          }
+        });
+
+        const finalTasks = Array.from(mergedTasksMap.values());
+        localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(finalTasks));
       }
 
-      // 3. Sync Submissions
+      // 3. Sync Submissions (Honor deletion tombstones and deleted tasks)
       if (data.submissions && Array.isArray(data.submissions)) {
+        const deletedSubIds = this.getDeletedSubIds();
+        const deletedTaskIds = this.getDeletedTaskIds();
         const currentSubmissions = this.getSubmissions();
         const currentSubIds = new Set(currentSubmissions.map((s) => s.id));
 
-        const mappedSubmissions: Submission[] = data.submissions.map((s: any) => {
+        const nonDeletedCloudSubs = data.submissions.filter(
+          (s: any) => !deletedSubIds.has(s.id) && !deletedTaskIds.has(s.taskId) && s.status !== 'DELETED' && s._deleted !== true
+        );
+
+        const mappedSubmissions: Submission[] = nonDeletedCloudSubs.map((s: any) => {
           let parsedFiles = [];
           if (typeof s.files === 'string') {
             try {
@@ -1104,14 +1221,28 @@ export class StorageService {
           }
         }
 
-        if (mappedSubmissions.length > 0) {
-          localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(mappedSubmissions));
-        }
+        const mergedSubsMap = new Map<string, Submission>();
+        mappedSubmissions.forEach((s) => mergedSubsMap.set(s.id, s));
+        currentSubmissions.forEach((s) => {
+          if (!deletedSubIds.has(s.id) && !deletedTaskIds.has(s.taskId) && !mergedSubsMap.has(s.id)) {
+            mergedSubsMap.set(s.id, s);
+          }
+        });
+
+        const finalSubs = Array.from(mergedSubsMap.values());
+        localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(finalSubs));
       }
 
-      // 4. Sync Documents
-      if (data.documents && Array.isArray(data.documents) && data.documents.length > 0) {
-        const mappedDocs: DocumentItem[] = data.documents.map((d: any) => ({
+      // 4. Sync Documents (Honor deletion tombstones)
+      if (data.documents && Array.isArray(data.documents)) {
+        const deletedDocIds = this.getDeletedDocIds();
+        const currentDocs = this.getDocuments();
+
+        const nonDeletedCloudDocs = data.documents.filter(
+          (d: any) => !deletedDocIds.has(d.id) && d.status !== 'DELETED' && d._deleted !== true
+        );
+
+        const mappedDocs: DocumentItem[] = nonDeletedCloudDocs.map((d: any) => ({
           id: d.id,
           title: d.title,
           category: d.category || 'SAMPLE_DOC',
@@ -1125,7 +1256,17 @@ export class StorageService {
           createdAt: d.createdAt || getNowISO(),
           updatedAt: d.updatedAt || d.createdAt || getNowISO(),
         }));
-        localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(mappedDocs));
+
+        const mergedDocsMap = new Map<string, DocumentItem>();
+        mappedDocs.forEach((d) => mergedDocsMap.set(d.id, d));
+        currentDocs.forEach((d) => {
+          if (!deletedDocIds.has(d.id) && !mergedDocsMap.has(d.id)) {
+            mergedDocsMap.set(d.id, d);
+          }
+        });
+
+        const finalDocs = Array.from(mergedDocsMap.values());
+        localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(finalDocs));
       }
 
       // 5. Sync Settings

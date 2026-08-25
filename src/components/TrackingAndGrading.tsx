@@ -208,6 +208,21 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
     }
   };
 
+  // Delete Entire Task (Admin only)
+  const handleDeleteTask = async (taskId: string, taskTitle: string) => {
+    if (!isAdmin) return;
+
+    const ok = await confirmDialog(
+      `ยืนยันการลบงาน "${taskTitle}"?`,
+      'การลบงานจะนำภาระงานและรายการส่งงานที่เกี่ยวข้องทั้งหมดออกจากระบบอย่างถาวร'
+    );
+    if (ok) {
+      StorageService.deleteTask(taskId);
+      notifySuccess('ลบงานมอบหมายเรียบร้อยแล้ว');
+      onRefreshData();
+    }
+  };
+
   const formatThaiDate = (dateStr: string) => {
     if (!dateStr) return '-';
     try {
@@ -390,7 +405,7 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
                     </div>
                   </div>
 
-                  {/* Submission Count Badge & GDrive Button for Task (Admin only) */}
+                  {/* Submission Count Badge & GDrive Button & Delete Task Button (Admin only) */}
                   <div className="flex items-center space-x-2 shrink-0">
                     {isAdmin && task.gDriveFolderUrl && (
                       <a
@@ -404,6 +419,20 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
                         <HardDrive className="w-3.5 h-3.5 text-emerald-600" />
                         <span>ไดรฟ์ของงาน</span>
                       </a>
+                    )}
+
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteTask(task.id, task.title);
+                        }}
+                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                        title="ลบงานนี้ออกจากระบบ"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     )}
 
                     <span className="px-3 py-1 text-xs font-bold rounded-xl bg-blue-50 text-blue-700 border border-blue-200">

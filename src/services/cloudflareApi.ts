@@ -153,6 +153,103 @@ export class CloudflareApiService {
   }
 
   /**
+   * Delete Task from Cloudflare D1
+   */
+  public static async deleteTask(id: string): Promise<boolean> {
+    try {
+      // Send both DELETE and POST to support various Cloudflare worker route designs
+      const res = await this.fetchWithTimeout(`${this.workerUrl}/api/tasks/${id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, _deleted: true }),
+      }, 3500);
+
+      if (!res.ok) {
+        await this.fetchWithTimeout(`${this.workerUrl}/api/tasks/delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }),
+        }, 3500);
+      }
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  /**
+   * Delete Document from Cloudflare D1
+   */
+  public static async deleteDocument(id: string): Promise<boolean> {
+    try {
+      const res = await this.fetchWithTimeout(`${this.workerUrl}/api/documents/${id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, _deleted: true }),
+      }, 3500);
+
+      if (!res.ok) {
+        await this.fetchWithTimeout(`${this.workerUrl}/api/documents/delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }),
+        }, 3500);
+      }
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  /**
+   * Delete Submission from Cloudflare D1
+   */
+  public static async deleteSubmission(id: string): Promise<boolean> {
+    try {
+      const res = await this.fetchWithTimeout(`${this.workerUrl}/api/submissions/${id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, _deleted: true }),
+      }, 3500);
+
+      if (!res.ok) {
+        await this.fetchWithTimeout(`${this.workerUrl}/api/submissions/delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }),
+        }, 3500);
+      }
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  /**
+   * Delete Announcement from Cloudflare D1
+   */
+  public static async deleteAnnouncement(id: string): Promise<boolean> {
+    try {
+      const res = await this.fetchWithTimeout(`${this.workerUrl}/api/announcements/${id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, _deleted: true }),
+      }, 3500);
+
+      if (!res.ok) {
+        await this.fetchWithTimeout(`${this.workerUrl}/api/announcements/delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }),
+        }, 3500);
+      }
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  /**
    * Save / Sync User to Cloudflare D1
    */
   public static async syncUser(user: User): Promise<boolean> {
