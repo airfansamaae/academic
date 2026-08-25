@@ -210,7 +210,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
       setTimeout(() => {
         setProfileSavedSuccess(false);
-      }, 2500);
+        onClose(); // ปิดหน้าต่างตั้งค่าระบบอัตโนมัติ กลับสู่หน้าหลัก
+      }, 500);
     } catch (err) {
       console.error('Save profile error:', err);
       notifyError('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
@@ -251,7 +252,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
       setTimeout(() => {
         setPasswordSavedSuccess(false);
-      }, 2500);
+        onClose(); // ปิดหน้าต่างตั้งค่าระบบอัตโนมัติ กลับสู่หน้าหลัก
+      }, 500);
     } catch (err) {
       console.error('Save password error:', err);
       notifyError('เกิดข้อผิดพลาดในการเปลี่ยนรหัสผ่าน');
@@ -280,7 +282,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
       setTimeout(() => {
         setSchoolSavedSuccess(false);
-      }, 2500);
+        onClose(); // ปิดหน้าต่างตั้งค่าระบบอัตโนมัติ กลับสู่หน้าหลัก
+      }, 500);
     } catch (err) {
       console.error('Save school settings error:', err);
       notifyError('เกิดข้อผิดพลาดในการบันทึกข้อมูลสถานศึกษา');
