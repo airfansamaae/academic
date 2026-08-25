@@ -2,28 +2,25 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Send,
   Plus,
-  PlusCircle,
   Megaphone,
   Calendar,
   UploadCloud,
   FileText,
   FileSpreadsheet,
   File,
-  Image as ImageIcon,
   Trash2,
   CheckCircle2,
   Clock,
-  AlertTriangle,
-  FolderOpen,
-  Edit3,
   HardDrive,
-  Eye,
+  Edit3,
   Check,
   X,
-  FileCheck,
-  Filter,
-  Layers,
-  Sparkles,
+  LayoutGrid,
+  List as ListIcon,
+  FolderOpen,
+  Eye,
+  ExternalLink,
+  Paperclip,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import {
@@ -67,10 +64,27 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
 }) => {
   const isAdmin = currentUser?.role === 'ADMIN';
 
-  // Safe arrays
+  // Safe data arrays
   const safeTasks = Array.isArray(tasks) ? tasks : [];
   const safeAnnouncements = Array.isArray(announcements) ? announcements : [];
   const safeSubmissions = Array.isArray(submissions) ? submissions : [];
+
+  // View Mode: 'CARD' (การ์ด) vs 'LIST' (รายการ)
+  const [viewMode, setViewMode] = useState<'CARD' | 'LIST'>(() => {
+    return (localStorage.getItem('academic_task_view_mode') as 'CARD' | 'LIST') || 'CARD';
+  });
+
+  const handleToggleViewMode = (mode: 'CARD' | 'LIST') => {
+    setViewMode(mode);
+    localStorage.setItem('academic_task_view_mode', mode);
+  };
+
+  // Helper sort: Nearest due date first (ascending)
+  const sortByDueDateAsc = (a: { dueDate?: string }, b: { dueDate?: string }) => {
+    const dateA = a?.dueDate || '9999-99-99';
+    const dateB = b?.dueDate || '9999-99-99';
+    return dateA.localeCompare(dateB);
+  };
 
   // Admin Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -89,33 +103,42 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
   // Admin List Filter Tab
   const [adminListFilter, setAdminListFilter] = useState<'ALL' | 'TASK' | 'ANNOUNCEMENT'>('ALL');
 
-  // Member Assigned Tasks Filter (only pending tasks for current member, sorted with nearest due date first)
+  // Sorted Tasks for Admin (nearest due date first)
+  const adminSortedTasks = [...safeTasks].sort(sortByDueDateAsc);
+
+  // Sorted Announcements for Admin
+  const adminSortedAnnouncements = [...safeAnnouncements].sort((a, b) => {
+    const dateA = a?.date || '9999-99-99';
+    const dateB = b?.date || '9999-99-99';
+    return dateA.localeCompare(dateB);
+  });
+
+  // Member Task Separation:
+  // 1. Pending (ยังไม่ส่งงาน) - อยู่ข้างบน เรียงตามกำหนดส่งที่ใกล้จะถึงก่อน
   const memberPendingTasks = safeTasks
     .filter((task) => {
       if (!task || !task.id) return false;
-      // Show only tasks that current member has NOT submitted yet
       if (!currentUser) return true;
-      const hasSubmitted = safeSubmissions.some(
+      return !safeSubmissions.some(
         (s) => s && s.taskId === task.id && s.memberId === currentUser.id
       );
-      return !hasSubmitted;
     })
-    .sort((a, b) => {
-      // Nearest due date on top (ascending order of dueDate)
-      const dateA = a?.dueDate || '';
-      const dateB = b?.dueDate || '';
-      return dateA.localeCompare(dateB);
-    });
+    .sort(sortByDueDateAsc);
 
-  // Member Submissions (tasks that member already submitted)
-  const memberCompletedSubmissions = safeSubmissions.filter(
-    (s) => s && s.memberId === currentUser?.id
-  );
+  // 2. Submitted (ส่งงานแล้ว) - ย้ายไปอยู่ข้างล่างสุด
+  const memberSubmittedTasksWithSubmissions = safeTasks
+    .map((task) => {
+      const submission = safeSubmissions.find(
+        (s) => s && s.taskId === task.id && s.memberId === currentUser?.id
+      );
+      return { task, submission };
+    })
+    .filter((item): item is { task: Task; submission: Submission } => Boolean(item.submission))
+    .sort((a, b) => sortByDueDateAsc(a.task, b.task));
 
-  // Active submission modal or selected task for member
+  // Member Submission Modal State
   const [activeTaskForSubmission, setActiveTaskForSubmission] = useState<Task | null>(null);
-
-  // Submission Form State (Member)
+  const [editingSubmission, setEditingSubmission] = useState<Submission | null>(null);
   const [submissionSubject, setSubmissionSubject] = useState('');
   const [submissionDescription, setSubmissionDescription] = useState('');
   const [uploadedFiles, setUploadedFiles] = useState<SubmissionFile[]>([]);
@@ -124,19 +147,36 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Handle opening submission modal for a specific task
+  // Open modal to submit new task
   const handleOpenSubmissionModal = (task: Task) => {
     if (!task) return;
+    setEditingSubmission(null);
     setActiveTaskForSubmission(task);
-    // Pre-fill subject with task title if empty
     setSubmissionSubject(task.title || '');
     setSubmissionDescription('');
     setUploadedFiles([]);
   };
 
+  // Open modal to edit existing submission
+  const handleOpenEditSubmissionModal = (task: Task, submission: Submission) => {
+    if (!task || !submission) return;
+    setEditingSubmission(submission);
+    setActiveTaskForSubmission(task);
+    setSubmissionSubject(submission.subject || task.title || '');
+    setSubmissionDescription(submission.description || '');
+    setUploadedFiles(Array.isArray(submission.files) ? [...submission.files] : []);
+  };
+
   useEffect(() => {
     if (preSelectedTask && !isAdmin) {
-      handleOpenSubmissionModal(preSelectedTask);
+      const existingSub = safeSubmissions.find(
+        (s) => s && s.taskId === preSelectedTask.id && s.memberId === currentUser?.id
+      );
+      if (existingSub) {
+        handleOpenEditSubmissionModal(preSelectedTask, existingSub);
+      } else {
+        handleOpenSubmissionModal(preSelectedTask);
+      }
     }
   }, [preSelectedTask, isAdmin]);
 
@@ -183,7 +223,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     }
   };
 
-  // Open modal for new creation
+  // Open modal for new creation (Admin)
   const handleOpenCreateModal = (category: 'TASK' | 'ANNOUNCEMENT' = 'TASK') => {
     setEditingItemId(null);
     setModalCategory(category);
@@ -196,7 +236,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     setIsModalOpen(true);
   };
 
-  // Open modal for editing a task
+  // Open modal for editing a task (Admin)
   const handleOpenEditTask = (task: Task) => {
     setEditingItemId(task.id);
     setModalCategory('TASK');
@@ -206,7 +246,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     setIsModalOpen(true);
   };
 
-  // Open modal for editing an announcement
+  // Open modal for editing an announcement (Admin)
   const handleOpenEditAnnouncement = (ann: Announcement) => {
     setEditingItemId(ann.id);
     setModalCategory('ANNOUNCEMENT');
@@ -217,7 +257,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     setIsModalOpen(true);
   };
 
-  // Save Modal Form (Handles both Task & Announcement)
+  // Save Modal Form (Admin: Handles both Task & Announcement)
   const handleSaveModal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!modalTitle.trim() || !modalDate) {
@@ -242,7 +282,6 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
             notifySuccess('อัปเดตข้อมูลงานที่มอบหมายสำเร็จ ✨');
           }
         } else {
-          // Fast task creation with dedicated storage folder
           const folderRes = await createGoogleDriveFolder(modalTitle.trim());
 
           StorageService.createTask({
@@ -254,10 +293,9 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
             gDriveFolderId: folderRes.folderId,
             gDriveFolderUrl: folderRes.folderUrl,
           });
-          notifySuccess(`บันทึกการมอบหมายงานสำเร็จ เรียบร้อยแล้ว ✨`);
+          notifySuccess('บันทึกการมอบหมายงานสำเร็จ เรียบร้อยแล้ว ✨');
         }
       } else {
-        // Announcement
         if (editingItemId) {
           const existing = announcements.find((a) => a.id === editingItemId);
           if (existing) {
@@ -313,12 +351,11 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     }
   };
 
-  // --- Member Multi-file Upload (Parallel Fast Upload) ---
+  // --- Member Multi-file Upload ---
   const handleFilesChosen = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
     setIsUploading(true);
-
     const fileList = Array.from(files);
 
     try {
@@ -363,7 +400,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     notifyInfo('ลบไฟล์ออกจากรายการแล้ว');
   };
 
-  // --- Member Submit Task ---
+  // --- Member Submit or Update Task ---
   const handleSubmitWork = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -387,36 +424,51 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
       return;
     }
 
-    StorageService.createSubmission({
-      taskId: activeTaskForSubmission.id,
-      taskTitle: activeTaskForSubmission.title,
-      memberId: currentUser.id,
-      memberName: currentUser.fullName,
-      memberSchool: currentUser.school,
-      memberAvatar: currentUser.avatarUrl,
-      subject: submissionSubject.trim(),
-      description: submissionDescription.trim(),
-      files: uploadedFiles,
-    });
+    if (editingSubmission) {
+      // Update existing submission
+      StorageService.updateSubmission({
+        ...editingSubmission,
+        subject: submissionSubject.trim(),
+        description: submissionDescription.trim(),
+        files: uploadedFiles,
+      });
+      notifySuccess(`อัปเดตการส่งงาน "${activeTaskForSubmission.title}" สำเร็จเรียบร้อยแล้ว! ✨`);
+    } else {
+      // Create new submission
+      StorageService.createSubmission({
+        taskId: activeTaskForSubmission.id,
+        taskTitle: activeTaskForSubmission.title,
+        memberId: currentUser.id,
+        memberName: currentUser.fullName,
+        memberSchool: currentUser.school,
+        memberAvatar: currentUser.avatarUrl,
+        subject: submissionSubject.trim(),
+        description: submissionDescription.trim(),
+        files: uploadedFiles,
+      });
 
-    // Confetti celebration effect!
-    confetti({
-      particleCount: 80,
-      spread: 70,
-      origin: { y: 0.6 },
-    });
+      confetti({
+        particleCount: 80,
+        spread: 70,
+        origin: { y: 0.6 },
+      });
 
-    notifySuccess(`ส่งงาน "${activeTaskForSubmission.title}" เข้าสู่ระบบเรียบร้อยแล้ว! 🎉`);
+      notifySuccess(`ส่งงาน "${activeTaskForSubmission.title}" เข้าสู่ระบบเรียบร้อยแล้ว! 🎉`);
+    }
+
     setActiveTaskForSubmission(null);
+    setEditingSubmission(null);
     onRefreshData();
   };
 
   return (
     <div className="space-y-6">
-      {/* ================= ADMIN VIEW ================= */}
+      {/* ========================================================================= */}
+      {/* ============================== ADMIN VIEW =============================== */}
+      {/* ========================================================================= */}
       {isAdmin && (
         <div className="space-y-6">
-          {/* Admin Header: Summary + Prominent '+' Button */}
+          {/* Admin Top Header: Title & Actions */}
           <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center space-x-3.5">
               <div className="w-12 h-12 bg-purple-600 text-white rounded-2xl flex items-center justify-center shadow-md shrink-0 ring-4 ring-purple-100">
@@ -424,30 +476,59 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
               </div>
               <div>
                 <h1 className="text-lg sm:text-xl font-bold text-slate-800 tracking-tight">
-                  มอบหมายงาน & ส่งงาน
+                  มอบหมายงาน & ประกาศ
                 </h1>
                 <p className="text-xs sm:text-sm text-slate-500">
-                  จัดการรายการงานที่ได้สั่งการและประกาศแจ้งเพื่อทราบทั้งหมดในระบบ
+                  ผู้ดูแลระบบมอบหมายงานวิชาการและประกาศแจ้งเพื่อทราบ (งานเรียงตามกำหนดส่งที่ใกล้ที่สุด)
                 </p>
               </div>
             </div>
 
-            {/* Prominent '+' Button */}
-            <div className="flex items-center gap-2">
+            {/* View Mode Toggle & Add Task Button */}
+            <div className="flex items-center flex-wrap gap-2.5">
+              {/* Card / List Switcher */}
+              <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => handleToggleViewMode('CARD')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center space-x-1.5 ${
+                    viewMode === 'CARD'
+                      ? 'bg-white text-purple-700 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                  title="แสดงผลแบบการ์ด"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span>การ์ด</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleToggleViewMode('LIST')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center space-x-1.5 ${
+                    viewMode === 'LIST'
+                      ? 'bg-white text-purple-700 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                  title="แสดงผลแบบรายการ"
+                >
+                  <ListIcon className="w-3.5 h-3.5" />
+                  <span>รายการ</span>
+                </button>
+              </div>
+
+              {/* Admin Create Button */}
               <button
                 type="button"
                 onClick={() => handleOpenCreateModal('TASK')}
                 className="btn-glow-purple px-4 sm:px-5 py-2.5 text-xs sm:text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 active:scale-95 transition-all rounded-xl shadow-md inline-flex items-center space-x-2 cursor-pointer"
               >
-                <div className="w-5 h-5 bg-white/20 rounded-lg flex items-center justify-center">
-                  <Plus className="w-4 h-4 text-white" />
-                </div>
-                <span>มอบหมายงาน / สร้างประกาศใหม่</span>
+                <Plus className="w-4 h-4 text-white" />
+                <span>มอบหมายงาน / ประกาศใหม่</span>
               </button>
             </div>
           </div>
 
-          {/* List Filter Tabs */}
+          {/* Filter Categories Tab */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center space-x-1.5 bg-slate-100/80 p-1 rounded-2xl border border-slate-200">
               <button
@@ -470,7 +551,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
-                <span>📝 งานที่มอบหมาย</span>
+                <span>📝 มอบหมายงาน (สีม่วง)</span>
                 <span className="bg-purple-100 text-purple-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
                   {safeTasks.length}
                 </span>
@@ -491,49 +572,139 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
               </button>
             </div>
 
-            <div className="text-xs text-slate-400 font-medium">
-              แสดงผลวันที่: <span className="font-mono text-slate-600 font-semibold">DD/MM/YYYY</span> (วัน/เดือน/ปี)
+            <div className="flex items-center space-x-3 text-xs text-slate-500">
+              <span className="inline-flex items-center space-x-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-purple-600"></span>
+                <span>งานมอบหมาย: สีม่วง</span>
+              </span>
+              <span className="inline-flex items-center space-x-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
+                <span>ส่งงานแล้ว: สีเขียว</span>
+              </span>
             </div>
           </div>
 
-          {/* Assigned Tasks Table */}
+          {/* Assigned Tasks Section (Admin) */}
           {(adminListFilter === 'ALL' || adminListFilter === 'TASK') && (
-            <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-xs space-y-3">
+            <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-xs space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center space-x-2">
                   <span className="text-base font-bold text-slate-800">
-                    รายการงานที่มอบหมายแล้ว
+                    รายการงานที่มอบหมาย (เรียงตามกำหนดส่งใกล้ที่สุดอยู่บน)
                   </span>
                   <span className="text-xs font-bold bg-purple-50 text-purple-700 px-2 py-0.5 rounded-md border border-purple-100">
-                    {safeTasks.length} รายการ
+                    {adminSortedTasks.length} รายการ
                   </span>
                 </div>
               </div>
 
-              {safeTasks.length === 0 ? (
+              {adminSortedTasks.length === 0 ? (
                 <div className="py-8 text-center text-slate-400 text-xs">
-                  ยังไม่มีรายการงานที่มอบหมาย กดปุ่ม "+" ด้านบนเพื่อสร้างงานใหม่
+                  ยังไม่มีรายการงานที่มอบหมาย กดปุ่มด้านบนเพื่อสร้างงานใหม่
+                </div>
+              ) : viewMode === 'CARD' ? (
+                /* --- Admin Card View --- */
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {adminSortedTasks.map((task, idx) => {
+                    const taskSubmissions = safeSubmissions.filter((s) => s && s.taskId === task.id);
+                    const isLate = isPastDue(task.dueDate);
+                    return (
+                      <div
+                        key={task.id}
+                        className={`p-5 rounded-3xl border transition-all flex flex-col justify-between space-y-4 hover:shadow-md ${
+                          idx === 0
+                            ? 'border-purple-300 bg-purple-50/20 ring-2 ring-purple-100'
+                            : 'border-purple-200 bg-white hover:border-purple-400'
+                        }`}
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center space-x-1.5">
+                              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
+                                📝 มอบหมายงาน
+                              </span>
+                              {idx === 0 && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-600 text-white shadow-2xs">
+                                  กำหนดส่งใกล้สุด
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center space-x-1 text-xs font-mono font-bold text-slate-700 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
+                              <Calendar className="w-3.5 h-3.5 text-purple-600" />
+                              <span>{formatThaiDate(task.dueDate)}</span>
+                            </div>
+                          </div>
+
+                          <h3 className="text-base font-bold text-slate-900 leading-snug">
+                            {task.title}
+                          </h3>
+                          <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
+                            {task.description || 'ไม่มีคำอธิบายเพิ่มเติม'}
+                          </p>
+                        </div>
+
+                        <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                          {/* Green indicator for submissions */}
+                          <span className="inline-flex items-center space-x-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>ส่งงานแล้ว {taskSubmissions.length} คน</span>
+                          </span>
+
+                          <div className="flex items-center space-x-1">
+                            {task.gDriveFolderUrl && (
+                              <a
+                                href={task.gDriveFolderUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors"
+                                title="เปิดโฟลเดอร์ Google Drive"
+                              >
+                                <HardDrive className="w-4 h-4" />
+                              </a>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditTask(task)}
+                              className="p-1.5 text-slate-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
+                              title="แก้ไขงาน"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteTask(task.id)}
+                              className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="ลบงาน"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
+                /* --- Admin List (Table) View --- */
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs sm:text-sm">
                     <thead>
-                      <tr className="border-b border-slate-200 bg-slate-50/80 text-slate-600">
+                      <tr className="border-b border-purple-100 bg-purple-50/50 text-purple-900">
                         <th className="py-3 px-3 rounded-l-xl font-bold">หมวดหมู่ & หัวข้องาน</th>
                         <th className="py-3 px-3 font-bold">กำหนดส่ง (DD/MM/YYYY)</th>
                         <th className="py-3 px-3 font-bold">Google Drive</th>
-                        <th className="py-3 px-3 font-bold">สถานะการส่งงาน</th>
+                        <th className="py-3 px-3 font-bold">สถานะการส่งงาน (สีเขียว)</th>
                         <th className="py-3 px-3 rounded-r-xl font-bold text-right">การจัดการ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {safeTasks.map((task) => {
+                      {adminSortedTasks.map((task) => {
                         const taskSubmissions = safeSubmissions.filter((s) => s && s.taskId === task.id);
                         return (
-                          <tr key={task.id} className="hover:bg-slate-50/80 transition-colors">
+                          <tr key={task.id} className="hover:bg-purple-50/20 transition-colors">
                             <td className="py-3.5 px-3">
                               <div className="flex items-center space-x-2">
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-100 whitespace-nowrap">
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 border border-purple-200 whitespace-nowrap">
                                   งานมอบหมาย
                                 </span>
                                 <p className="font-bold text-slate-800 line-clamp-1">{task.title}</p>
@@ -562,7 +733,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                               )}
                             </td>
                             <td className="py-3.5 px-3 whitespace-nowrap">
-                              <span className="inline-flex items-center space-x-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                              <span className="inline-flex items-center space-x-1 text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
                                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                                 <span>ส่งแล้ว {taskSubmissions.length} คน</span>
                               </span>
@@ -597,27 +768,27 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
             </div>
           )}
 
-          {/* Announcements List */}
+          {/* Announcements Section (Admin) */}
           {(adminListFilter === 'ALL' || adminListFilter === 'ANNOUNCEMENT') && (
-            <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-xs space-y-3">
+            <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-xs space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center space-x-2">
                   <span className="text-base font-bold text-slate-800">
                     รายการประกาศแจ้งเพื่อทราบทั้งหมด
                   </span>
                   <span className="text-xs font-bold bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md border border-amber-100">
-                    {safeAnnouncements.length} รายการ
+                    {adminSortedAnnouncements.length} รายการ
                   </span>
                 </div>
               </div>
 
-              {safeAnnouncements.length === 0 ? (
+              {adminSortedAnnouncements.length === 0 ? (
                 <div className="py-8 text-center text-slate-400 text-xs">
-                  ยังไม่มีประกาศแจ้งเพื่อทราบ กดปุ่ม "+" เพื่อสร้างประกาศใหม่
+                  ยังไม่มีประกาศแจ้งเพื่อทราบ กดปุ่มด้านบนเพื่อสร้างประกาศใหม่
                 </div>
-              ) : (
+              ) : viewMode === 'CARD' ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {safeAnnouncements.map((ann) => (
+                  {adminSortedAnnouncements.map((ann) => (
                     <div
                       key={ann.id}
                       className="p-4 rounded-2xl border border-amber-200 bg-amber-50/40 flex items-start justify-between gap-3 hover:border-amber-300 transition-colors"
@@ -662,15 +833,67 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                     </div>
                   ))}
                 </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs sm:text-sm">
+                    <thead>
+                      <tr className="border-b border-amber-100 bg-amber-50/50 text-amber-900">
+                        <th className="py-3 px-3 rounded-l-xl font-bold">ประเภท & หัวข้อประกาศ</th>
+                        <th className="py-3 px-3 font-bold">วันที่ประกาศ / จัดกิจกรรม</th>
+                        <th className="py-3 px-3 font-bold">รายละเอียด</th>
+                        <th className="py-3 px-3 rounded-r-xl font-bold text-right">การจัดการ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {adminSortedAnnouncements.map((ann) => (
+                        <tr key={ann.id} className="hover:bg-amber-50/20 transition-colors">
+                          <td className="py-3.5 px-3 whitespace-nowrap">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-200">
+                              {ann.type === 'HOLIDAY'
+                                ? '🏖️ วันหยุด'
+                                : ann.type === 'ACTIVITY'
+                                ? '🎯 กิจกรรม'
+                                : '📢 ข่าวสาร'}
+                            </span>
+                            <span className="ml-2 font-bold text-slate-800">{ann.title}</span>
+                          </td>
+                          <td className="py-3.5 px-3 whitespace-nowrap font-mono font-semibold text-slate-700">
+                            {formatThaiDate(ann.date)}
+                          </td>
+                          <td className="py-3.5 px-3 text-slate-600 max-w-xs truncate">
+                            {ann.details || '-'}
+                          </td>
+                          <td className="py-3.5 px-3 text-right whitespace-nowrap">
+                            <div className="inline-flex items-center space-x-1">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditAnnouncement(ann)}
+                                className="p-1.5 text-slate-400 hover:text-amber-700 hover:bg-amber-100 rounded-lg transition-colors cursor-pointer"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteAnnouncement(ann.id)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           )}
 
-          {/* ================= MODAL DIALOG (Admin '+' / Edit) ================= */}
+          {/* ================= ADMIN CREATE / EDIT MODAL ================= */}
           {isModalOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
               <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto space-y-5 animate-in zoom-in-95 duration-150">
-                {/* Modal Header */}
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                   <div className="flex items-center space-x-3">
                     <div
@@ -707,13 +930,11 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                   </button>
                 </div>
 
-                {/* Modal Form */}
                 <form onSubmit={handleSaveModal} className="space-y-4">
-                  {/* 1. Category Selection */}
                   {!editingItemId && (
                     <div className="space-y-1.5">
                       <label className="text-xs font-bold text-slate-700 block">
-                        1. หมวดหมู่ <span className="text-rose-500">*</span>
+                        1. เลือกหมวดหมู่ <span className="text-rose-500">*</span>
                       </label>
                       <div className="grid grid-cols-2 gap-2">
                         <button
@@ -735,7 +956,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                             <Send className="w-4 h-4" />
                           </div>
                           <div>
-                            <p className="text-xs font-bold leading-tight">มอบหมายงาน</p>
+                            <p className="text-xs font-bold leading-tight">มอบหมายงาน (สีม่วง)</p>
                             <p className="text-[10px] text-slate-500">มีกำหนดส่ง & เก็บลง Drive</p>
                           </div>
                         </button>
@@ -759,27 +980,27 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                             <Megaphone className="w-4 h-4" />
                           </div>
                           <div>
-                            <p className="text-xs font-bold leading-tight">ประกาศให้ทราบ</p>
-                            <p className="text-[10px] text-slate-500">แจ้งข่าวสาร / กิจกรรม</p>
+                            <p className="text-xs font-bold leading-tight">ประกาศแจ้งเพื่อทราบ</p>
+                            <p className="text-[10px] text-slate-500">ปฏิทิน & ข่าวสาร</p>
                           </div>
                         </button>
                       </div>
                     </div>
                   )}
 
-                  {/* 2. Title */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-700">
-                      2. {modalCategory === 'TASK' ? 'หัวข้องานที่มอบหมาย' : 'หัวข้อประกาศ'}{' '}
-                      <span className="text-rose-500">* (จำเป็น)</span>
+                    <label className="text-xs font-bold text-slate-700 block">
+                      {editingItemId ? '1.' : '2.'}{' '}
+                      {modalCategory === 'TASK' ? 'หัวข้องานวิชาการ' : 'หัวข้อประกาศ'}{' '}
+                      <span className="text-rose-500">*</span>
                     </label>
                     <input
                       type="text"
                       required
                       placeholder={
                         modalCategory === 'TASK'
-                          ? 'เช่น ส่งแผนการจัดการเรียนรู้ ประจำภาคเรียนที่ 1/2569'
-                          : 'เช่น แจ้งกำหนดการประชุมวิชาการ หรือ วันหยุดราชการ'
+                          ? 'เช่น ส่งแผนการจัดการเรียนรู้ ภาคเรียนที่ 1/2569'
+                          : 'เช่น ประชุมคณะกรรมการวิชาการประจำเดือน'
                       }
                       value={modalTitle}
                       onChange={(e) => setModalTitle(e.target.value)}
@@ -787,10 +1008,11 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                     />
                   </div>
 
-                  {/* Announcement Type (if category is Announcement) */}
                   {modalCategory === 'ANNOUNCEMENT' && (
                     <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-slate-700">ประเภทประกาศ</label>
+                      <label className="text-xs font-bold text-slate-700 block">
+                        ประเภทของประกาศ <span className="text-rose-500">*</span>
+                      </label>
                       <select
                         value={modalAnnType}
                         onChange={(e) => setModalAnnType(e.target.value as AnnouncementType)}
@@ -803,7 +1025,6 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                     </div>
                   )}
 
-                  {/* 3. Description (Optional) */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
                       <span>3. รายละเอียดคำอธิบาย</span>
@@ -811,18 +1032,13 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                     </label>
                     <textarea
                       rows={3}
-                      placeholder={
-                        modalCategory === 'TASK'
-                          ? 'ระบุรูปแบบเอกสาร ไฟล์ที่ต้องการ หรือเงื่อนไขการส่งงาน (ไม่บังคับ)...'
-                          : 'ระบุรายละเอียด กำหนดการ สถานที่ หรือสิ่งที่บุคลากรควรทราบ (ไม่บังคับ)...'
-                      }
+                      placeholder="ระบุรูปแบบเอกสาร ไฟล์ที่ต้องการ หรือเงื่อนไขการส่งงาน..."
                       value={modalDescription}
                       onChange={(e) => setModalDescription(e.target.value)}
                       className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all outline-hidden"
                     />
                   </div>
 
-                  {/* 4. Due Date / Event Date (dd/mm/yyyy with ThaiDatePicker) */}
                   <div className="space-y-1.5">
                     <ThaiDatePicker
                       value={modalDate}
@@ -835,15 +1051,8 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                       required
                       colorScheme={modalCategory === 'TASK' ? 'purple' : 'amber'}
                     />
-                    <p className="text-[11px] text-slate-500 pl-1">
-                      ระบบแสดงผลตามรูปแบบ วัน/เดือน/ปี (dd/mm/yyyy) เช่น{' '}
-                      <span className="font-semibold text-purple-700">
-                        {formatThaiDate(modalDate, true)}
-                      </span>
-                    </p>
                   </div>
 
-                  {/* Footer Actions */}
                   <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2">
                     <button
                       type="button"
@@ -884,65 +1093,101 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
         </div>
       )}
 
-      {/* ================= MEMBER VIEW ================= */}
+      {/* ========================================================================= */}
+      {/* ============================= MEMBER VIEW =============================== */}
+      {/* ========================================================================= */}
       {!isAdmin && (
         <div className="space-y-6">
-          {/* Member Header */}
-          <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-xs">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center space-x-3.5">
-                <div className="w-12 h-12 bg-emerald-600 text-white rounded-2xl flex items-center justify-center shadow-md shrink-0 ring-4 ring-emerald-100">
-                  <Send className="w-6 h-6" />
-                </div>
-                <div>
-                  <h1 className="text-lg sm:text-xl font-bold text-slate-800 tracking-tight">
-                    มอบหมายงาน & ส่งงาน
-                  </h1>
-                  <p className="text-xs sm:text-sm text-slate-500">
-                    รายการงานที่ Admin มอบหมายเฉพาะที่คุณยังไม่ได้ส่ง (เรียงตามกำหนดส่งที่ใกล้จะมาถึงก่อน)
-                  </p>
-                </div>
+          {/* Member Top Header */}
+          <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center space-x-3.5">
+              <div className="w-12 h-12 bg-purple-600 text-white rounded-2xl flex items-center justify-center shadow-md shrink-0 ring-4 ring-purple-100">
+                <Send className="w-6 h-6" />
+              </div>
+              <div>
+                <h1 className="text-lg sm:text-xl font-bold text-slate-800 tracking-tight">
+                  มอบหมายงาน & ส่งงาน
+                </h1>
+                <p className="text-xs sm:text-sm text-slate-500">
+                  งานที่ยังไม่ส่ง (สีม่วง) อยู่ข้างบนเรียงตามกำหนดส่ง • งานที่ส่งแล้ว (สีเขียว) อยู่ข้างล่างสุด
+                </p>
+              </div>
+            </div>
+
+            {/* View Mode Toggle & Stat Badges */}
+            <div className="flex items-center flex-wrap gap-2.5">
+              {/* Card / List Switcher */}
+              <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => handleToggleViewMode('CARD')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center space-x-1.5 ${
+                    viewMode === 'CARD'
+                      ? 'bg-white text-purple-700 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                  title="แสดงผลแบบการ์ด"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span>การ์ด</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleToggleViewMode('LIST')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center space-x-1.5 ${
+                    viewMode === 'LIST'
+                      ? 'bg-white text-purple-700 shadow-xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                  title="แสดงผลแบบรายการ"
+                >
+                  <ListIcon className="w-3.5 h-3.5" />
+                  <span>รายการ</span>
+                </button>
               </div>
 
+              {/* Status summary counters */}
               <div className="flex items-center space-x-2">
-                <span className="inline-flex items-center space-x-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 px-3.5 py-1.5 rounded-xl font-bold text-xs">
-                  <Clock className="w-4 h-4 text-emerald-600" />
-                  <span>งานค้างส่ง: {memberPendingTasks.length} รายการ</span>
+                <span className="inline-flex items-center space-x-1.5 bg-purple-50 text-purple-800 border border-purple-200 px-3 py-1.5 rounded-xl font-bold text-xs">
+                  <Clock className="w-3.5 h-3.5 text-purple-600" />
+                  <span>ยังไม่ส่ง: {memberPendingTasks.length}</span>
+                </span>
+                <span className="inline-flex items-center space-x-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-xl font-bold text-xs">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>ส่งแล้ว: {memberSubmittedTasksWithSubmissions.length}</span>
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Pending Tasks List (Only unsubmitted tasks, sorted nearest due date first) */}
-          <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-xs space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center space-x-2">
-                <h2 className="text-base font-bold text-slate-800">
-                  งานที่ Admin มอบหมาย (รอดำเนินการส่งงาน)
+          {/* ================= TOP SECTION: PENDING TASKS (ยังไม่ส่งงาน : สีม่วง) ================= */}
+          <div className="bg-white rounded-3xl border border-purple-200/80 p-5 sm:p-6 shadow-xs space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-purple-100">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-3 h-3 rounded-full bg-purple-600 ring-4 ring-purple-100"></div>
+                <h2 className="text-base font-bold text-purple-950">
+                  งานที่ยังไม่ส่ง (ยังไม่ส่งงาน : สีม่วง) — เรียงตามกำหนดส่งใกล้ที่สุดอยู่บน
                 </h2>
-                <span className="text-xs font-bold bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md border border-amber-100">
-                  {memberPendingTasks.length} งาน
+                <span className="text-xs font-bold bg-purple-100 text-purple-800 px-2.5 py-0.5 rounded-full border border-purple-200">
+                  {memberPendingTasks.length} รายการ
                 </span>
               </div>
-              <span className="text-[11px] text-slate-400 font-medium">
-                * งานที่ส่งแล้วจะถูกซ่อนจากหน้านี้อัตโนมัติ
+              <span className="text-xs font-medium text-purple-700 bg-purple-50 px-2.5 py-1 rounded-lg border border-purple-100 hidden sm:inline-block">
+                🔔 กรุณาส่งงานก่อนเลยกำหนด
               </span>
             </div>
 
             {memberPendingTasks.length === 0 ? (
-              <div className="py-12 text-center text-slate-400 space-y-3">
-                <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto border border-emerald-200">
-                  <CheckCircle2 className="w-8 h-8" />
+              <div className="py-8 text-center text-slate-400 space-y-2">
+                <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-full flex items-center justify-center mx-auto border border-purple-200">
+                  <CheckCircle2 className="w-6 h-6" />
                 </div>
-                <div>
-                  <p className="text-base font-bold text-slate-800">ยอดเยี่ยมมาก! คุณไม่มีงานค้างส่งในระบบ</p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    คุณได้ส่งงานที่ได้รับมอบหมายครบทุกรายการเรียบร้อยแล้ว
-                  </p>
-                </div>
+                <p className="text-sm font-bold text-slate-700">ไม่มีงานค้างส่งในส่วนนี้</p>
+                <p className="text-xs text-slate-400">คุณได้ส่งงานทุกรายการครบถ้วนแล้ว ดูรายการด้านล่าง</p>
               </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            ) : viewMode === 'CARD' ? (
+              /* --- Member Pending Tasks: CARD VIEW --- */
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {memberPendingTasks.map((task, idx) => {
                   const isLate = isPastDue(task.dueDate);
                   return (
@@ -950,78 +1195,310 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                       key={task.id}
                       className={`p-5 rounded-3xl border transition-all flex flex-col justify-between space-y-4 hover:shadow-md ${
                         isLate
-                          ? 'border-rose-200 bg-rose-50/30 hover:border-rose-300'
+                          ? 'border-rose-300 bg-rose-50/30 hover:border-rose-400 ring-2 ring-rose-100'
                           : idx === 0
-                          ? 'border-emerald-300 bg-emerald-50/20 hover:border-emerald-400 ring-2 ring-emerald-100'
-                          : 'border-slate-200 bg-slate-50/40 hover:border-emerald-300'
+                          ? 'border-purple-400 bg-purple-50/30 hover:border-purple-500 ring-2 ring-purple-100'
+                          : 'border-purple-200 bg-purple-50/10 hover:border-purple-400'
                       }`}
                     >
                       <div className="space-y-2">
-                        {/* Status & Priority Badge */}
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center space-x-1.5">
+                            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
+                              🟣 ยังไม่ส่งงาน
+                            </span>
                             {idx === 0 && !isLate && (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-600 text-white shadow-2xs">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-600 text-white shadow-2xs">
                                 กำหนดส่งใกล้สุด 🔥
                               </span>
                             )}
                             {isLate && (
                               <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-rose-600 text-white shadow-2xs">
-                                เลยกำหนดส่งแล้ว
+                                เลยกำหนดส่ง
                               </span>
                             )}
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-100">
-                              งานวิชาการ
-                            </span>
                           </div>
 
                           <div className="flex items-center space-x-1 text-xs font-mono font-bold text-slate-700 bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs">
                             <Calendar className="w-3.5 h-3.5 text-purple-600" />
-                            <span>กำหนดส่ง: {formatThaiDate(task.dueDate)}</span>
+                            <span>{formatThaiDate(task.dueDate)}</span>
                           </div>
                         </div>
 
-                        {/* Title */}
                         <h3 className="text-base font-bold text-slate-900 leading-snug">
                           {task.title}
                         </h3>
 
-                        {/* Description */}
                         <p className="text-xs text-slate-600 line-clamp-3 leading-relaxed">
                           {task.description || 'ไม่มีคำอธิบายเพิ่มเติมจากผู้ดูแลระบบ'}
                         </p>
                       </div>
 
-                      {/* Footer Info & Instant Submit Button */}
-                      <div className="pt-3 border-t border-slate-200/80 flex items-center justify-between gap-2">
-                        <div className="text-[11px] text-slate-400">
-                          มอบหมายโดย: <span className="font-semibold text-slate-600">{task.assignedBy}</span>
+                      <div className="pt-3 border-t border-purple-100 flex items-center justify-between gap-2">
+                        <div className="text-[11px] text-slate-500 truncate">
+                          โดย: <span className="font-semibold text-slate-700">{task.assignedBy}</span>
                         </div>
 
                         <button
                           type="button"
                           onClick={() => handleOpenSubmissionModal(task)}
-                          className="btn-glow-emerald px-4 py-2 text-xs sm:text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-all shadow-md inline-flex items-center space-x-1.5 cursor-pointer active:scale-95"
+                          className="btn-glow-purple px-4 py-2 text-xs sm:text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition-all shadow-md inline-flex items-center space-x-1.5 cursor-pointer active:scale-95 shrink-0"
                         >
-                          <Send className="w-4 h-4" />
-                          <span>กดส่งงานทันที</span>
+                          <Send className="w-3.5 h-3.5" />
+                          <span>ส่งงานทันที</span>
                         </button>
                       </div>
                     </div>
                   );
                 })}
               </div>
+            ) : (
+              /* --- Member Pending Tasks: LIST VIEW --- */
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs sm:text-sm">
+                  <thead>
+                    <tr className="border-b border-purple-100 bg-purple-50/70 text-purple-900">
+                      <th className="py-3 px-3 rounded-l-xl font-bold">สถานะ & หัวข้องาน</th>
+                      <th className="py-3 px-3 font-bold">กำหนดส่ง (DD/MM/YYYY)</th>
+                      <th className="py-3 px-3 font-bold">มอบหมายโดย</th>
+                      <th className="py-3 px-3 rounded-r-xl font-bold text-right">ดำเนินการ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-purple-50">
+                    {memberPendingTasks.map((task, idx) => {
+                      const isLate = isPastDue(task.dueDate);
+                      return (
+                        <tr key={task.id} className="hover:bg-purple-50/30 transition-colors">
+                          <td className="py-3.5 px-3">
+                            <div className="flex items-center space-x-2">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200 whitespace-nowrap">
+                                🟣 ยังไม่ส่ง
+                              </span>
+                              {idx === 0 && !isLate && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-purple-600 text-white">
+                                  ใกล้สุด
+                                </span>
+                              )}
+                              {isLate && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-rose-600 text-white">
+                                  เลยกำหนด
+                                </span>
+                              )}
+                              <p className="font-bold text-slate-800">{task.title}</p>
+                            </div>
+                            <p className="text-xs text-slate-500 line-clamp-1 mt-0.5 pl-0.5">
+                              {task.description || 'ไม่มีคำอธิบายเพิ่มเติม'}
+                            </p>
+                          </td>
+                          <td className="py-3.5 px-3 whitespace-nowrap font-mono font-semibold text-purple-900">
+                            {formatThaiDate(task.dueDate)}
+                          </td>
+                          <td className="py-3.5 px-3 whitespace-nowrap text-slate-600">
+                            {task.assignedBy || 'ผู้ดูแลระบบ'}
+                          </td>
+                          <td className="py-3.5 px-3 text-right whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenSubmissionModal(task)}
+                              className="px-3.5 py-1.5 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition-all shadow-xs inline-flex items-center space-x-1.5 cursor-pointer"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                              <span>ส่งงาน</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
 
-          {/* Submission Modal Dialog for Member (Popup with multi-file upload) */}
+          {/* ================= BOTTOM SECTION: SUBMITTED TASKS (ส่งงานแล้ว : สีเขียว) ================= */}
+          <div className="bg-white rounded-3xl border border-emerald-200/80 p-5 sm:p-6 shadow-xs space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-emerald-100">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-3 h-3 rounded-full bg-emerald-600 ring-4 ring-emerald-100"></div>
+                <h2 className="text-base font-bold text-emerald-950">
+                  งานที่ส่งแล้ว (ส่งงานแล้ว : สีเขียว) — ย้ายมาอยู่ล่างสุด (สามารถแก้ไขเปลี่ยนชื่อและแนบไฟล์ใหม่ได้)
+                </h2>
+                <span className="text-xs font-bold bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                  {memberSubmittedTasksWithSubmissions.length} รายการ
+                </span>
+              </div>
+              <span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100 hidden sm:inline-block">
+                ✨ คลิก "แก้ไขการส่งงาน" เพื่อเปลี่ยนชื่อหรืออัปโหลดไฟล์ใหม่
+              </span>
+            </div>
+
+            {memberSubmittedTasksWithSubmissions.length === 0 ? (
+              <div className="py-8 text-center text-slate-400 space-y-2">
+                <p className="text-sm font-bold text-slate-700">ยังไม่มีรายการงานที่ส่งแล้ว</p>
+                <p className="text-xs text-slate-400">เมื่อคุณส่งงาน รายการจะถูกย้ายมาแสดงที่ส่วนนี้โดยอัตโนมัติ</p>
+              </div>
+            ) : viewMode === 'CARD' ? (
+              /* --- Member Submitted Tasks: CARD VIEW --- */
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {memberSubmittedTasksWithSubmissions.map(({ task, submission }) => {
+                  const fileCount = Array.isArray(submission.files) ? submission.files.length : 0;
+                  return (
+                    <div
+                      key={task.id}
+                      className="p-5 rounded-3xl border border-emerald-200 bg-emerald-50/20 transition-all flex flex-col justify-between space-y-4 hover:shadow-md hover:border-emerald-400"
+                    >
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            🟢 ส่งงานแล้ว
+                          </span>
+                          <div className="flex items-center space-x-1 text-xs font-mono font-bold text-emerald-800 bg-white px-2.5 py-1 rounded-lg border border-emerald-200">
+                            <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>{formatThaiDate(task.dueDate)}</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <p className="text-[11px] font-bold text-emerald-700 mb-0.5">
+                            หัวข้องานมอบหมาย: {task.title}
+                          </p>
+                          <h3 className="text-base font-bold text-slate-900 leading-snug">
+                            {submission.subject || task.title}
+                          </h3>
+                        </div>
+
+                        {submission.description && (
+                          <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed bg-white/70 p-2 rounded-xl border border-emerald-100">
+                            {submission.description}
+                          </p>
+                        )}
+
+                        {/* Files preview list */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
+                            <span className="flex items-center space-x-1">
+                              <Paperclip className="w-3 h-3 text-emerald-600" />
+                              <span>แนบแล้ว {fileCount} ไฟล์</span>
+                            </span>
+                          </div>
+                          {Array.isArray(submission.files) && submission.files.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {submission.files.slice(0, 3).map((f, i) => (
+                                <a
+                                  key={f.id || i}
+                                  href={f.gDriveUrl || GDRIVE_FOLDER_URL}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-[10px] font-medium text-emerald-800 bg-white px-2 py-0.5 rounded-md border border-emerald-200 hover:bg-emerald-50 transition-colors truncate max-w-[140px] inline-flex items-center space-x-1"
+                                  title={f.name}
+                                >
+                                  <FileText className="w-3 h-3 text-emerald-600 shrink-0" />
+                                  <span className="truncate">{f.name}</span>
+                                </a>
+                              ))}
+                              {submission.files.length > 3 && (
+                                <span className="text-[10px] text-slate-400 self-center">
+                                  +{submission.files.length - 3} ไฟล์
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Edit Button */}
+                      <div className="pt-3 border-t border-emerald-100 flex items-center justify-between gap-2">
+                        <span className="text-[10px] text-emerald-700 font-medium">
+                          ส่งเมื่อ: {new Date(submission.submittedAt).toLocaleDateString('th-TH')}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditSubmissionModal(task, submission)}
+                          className="px-3.5 py-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 rounded-xl transition-all inline-flex items-center space-x-1.5 cursor-pointer active:scale-95"
+                          title="แก้ไขเปลี่ยนชื่องาน หรืออัปโหลดไฟล์ใหม่"
+                        >
+                          <Edit3 className="w-3.5 h-3.5 text-emerald-700" />
+                          <span>แก้ไขการส่งงาน</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* --- Member Submitted Tasks: LIST VIEW --- */
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs sm:text-sm">
+                  <thead>
+                    <tr className="border-b border-emerald-100 bg-emerald-50/70 text-emerald-900">
+                      <th className="py-3 px-3 rounded-l-xl font-bold">สถานะ & ชื่องานที่ส่ง</th>
+                      <th className="py-3 px-3 font-bold">ชื่องานมอบหมายเดิม</th>
+                      <th className="py-3 px-3 font-bold">กำหนดส่ง</th>
+                      <th className="py-3 px-3 font-bold">ไฟล์ที่แนบ</th>
+                      <th className="py-3 px-3 rounded-r-xl font-bold text-right">การจัดการ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-emerald-50">
+                    {memberSubmittedTasksWithSubmissions.map(({ task, submission }) => {
+                      const fileCount = Array.isArray(submission.files) ? submission.files.length : 0;
+                      return (
+                        <tr key={task.id} className="hover:bg-emerald-50/30 transition-colors">
+                          <td className="py-3.5 px-3">
+                            <div className="flex items-center space-x-2">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 whitespace-nowrap">
+                                🟢 ส่งแล้ว
+                              </span>
+                              <p className="font-bold text-slate-800">{submission.subject || task.title}</p>
+                            </div>
+                            {submission.description && (
+                              <p className="text-xs text-slate-500 line-clamp-1 mt-0.5 pl-0.5">
+                                {submission.description}
+                              </p>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-3 text-slate-600 whitespace-nowrap">
+                            {task.title}
+                          </td>
+                          <td className="py-3.5 px-3 whitespace-nowrap font-mono font-semibold text-emerald-900">
+                            {formatThaiDate(task.dueDate)}
+                          </td>
+                          <td className="py-3.5 px-3 whitespace-nowrap">
+                            <span className="text-xs font-semibold text-emerald-800 bg-white px-2.5 py-1 rounded-lg border border-emerald-200 inline-flex items-center space-x-1">
+                              <Paperclip className="w-3 h-3 text-emerald-600" />
+                              <span>{fileCount} ไฟล์</span>
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-3 text-right whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditSubmissionModal(task, submission)}
+                              className="px-3 py-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 rounded-xl transition-all inline-flex items-center space-x-1.5 cursor-pointer"
+                            >
+                              <Edit3 className="w-3.5 h-3.5 text-emerald-700" />
+                              <span>แก้ไขการส่งงาน</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* ================= MEMBER SUBMISSION / EDIT MODAL ================= */}
           {activeTaskForSubmission && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
               <div className="bg-white rounded-3xl max-w-2xl w-full p-5 sm:p-7 shadow-2xl border border-slate-100 relative my-8 animate-in fade-in zoom-in duration-200">
                 {/* Close Button */}
                 <button
                   type="button"
-                  onClick={() => setActiveTaskForSubmission(null)}
+                  onClick={() => {
+                    setActiveTaskForSubmission(null);
+                    setEditingSubmission(null);
+                  }}
                   className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
                   title="ปิดหน้าต่าง"
                 >
@@ -1030,20 +1507,26 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
 
                 {/* Modal Header */}
                 <div className="flex items-start space-x-3.5 pb-4 mb-5 border-b border-slate-100">
-                  <div className="w-11 h-11 bg-emerald-600 text-white rounded-2xl flex items-center justify-center shadow-md shrink-0 ring-4 ring-emerald-100">
-                    <Send className="w-6 h-6" />
+                  <div
+                    className={`w-11 h-11 text-white rounded-2xl flex items-center justify-center shadow-md shrink-0 ring-4 ${
+                      editingSubmission
+                        ? 'bg-emerald-600 ring-emerald-100'
+                        : 'bg-purple-600 ring-purple-100'
+                    }`}
+                  >
+                    {editingSubmission ? <Edit3 className="w-6 h-6" /> : <Send className="w-6 h-6" />}
                   </div>
                   <div className="pr-6">
                     <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">
-                      ส่งงานวิชาการ: {activeTaskForSubmission.title}
+                      {editingSubmission ? 'แก้ไขการส่งงานวิชาการ' : 'ส่งงานวิชาการ'}: {activeTaskForSubmission.title}
                     </h2>
                     <div className="flex flex-wrap items-center gap-2 text-xs mt-1">
                       <span className="text-slate-500">
                         กำหนดส่ง: <strong className="font-mono text-slate-800">{formatThaiDate(activeTaskForSubmission.dueDate, true)}</strong>
                       </span>
-                      {isPastDue(activeTaskForSubmission.dueDate) && (
-                        <span className="text-rose-700 bg-rose-100 px-2 py-0.5 rounded-md font-bold text-[11px]">
-                          เลยกำหนดส่งแล้ว แต่ระบบยังเปิดให้ส่งงานได้
+                      {editingSubmission && (
+                        <span className="text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-md font-bold text-[11px]">
+                          ✓ งานนี้เคยส่งแล้ว (กำลังแก้ไข)
                         </span>
                       )}
                     </div>
@@ -1060,10 +1543,10 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
 
                 {/* Submission Form */}
                 <form onSubmit={handleSubmitWork} className="space-y-4">
-                  {/* Subject Title (Required) */}
+                  {/* Subject Title (Editable) */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-slate-700 block">
-                      1. กรอกหัวข้องานที่ส่ง <span className="text-rose-500">* (จำเป็น)</span>
+                      1. กรอกหรือแก้ไขหัวข้องานที่ส่ง <span className="text-rose-500">* (จำเป็น)</span>
                     </label>
                     <input
                       type="text"
@@ -1071,7 +1554,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                       placeholder="เช่น แผนการจัดการเรียนรู้วิชาภาษาไทย ม.2 ภาคเรียนที่ 1/2569"
                       value={submissionSubject}
                       onChange={(e) => setSubmissionSubject(e.target.value)}
-                      className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all outline-hidden font-medium"
+                      className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all outline-hidden font-medium"
                     />
                   </div>
 
@@ -1086,7 +1569,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                       placeholder="เช่น แนบไฟล์บทเรียน 1-4 พร้อมแบบประเมินผลการเรียนรู้เรียบร้อยครับ"
                       value={submissionDescription}
                       onChange={(e) => setSubmissionDescription(e.target.value)}
-                      className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all outline-hidden"
+                      className="w-full px-3.5 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all outline-hidden"
                     />
                   </div>
 
@@ -1094,11 +1577,11 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-bold text-slate-700 flex items-center space-x-1.5">
-                        <UploadCloud className="w-4 h-4 text-emerald-600" />
-                        <span>3. อัปโหลดไฟล์งาน (รองรับหลายไฟล์พร้อมกัน) <span className="text-rose-500">*</span></span>
+                        <UploadCloud className="w-4 h-4 text-purple-600" />
+                        <span>3. อัปโหลดไฟล์งาน / เปลี่ยนไฟล์ใหม่ (รองรับหลายไฟล์) <span className="text-rose-500">*</span></span>
                       </label>
-                      <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center space-x-1.5">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      <span className="text-[11px] font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200 flex items-center space-x-1.5">
+                        <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse"></span>
                         <span>แนบไฟล์เอกสาร</span>
                       </span>
                     </div>
@@ -1118,8 +1601,8 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                       onClick={() => fileInputRef.current?.click()}
                       className={`border-2 border-dashed rounded-2xl p-5 text-center transition-all cursor-pointer ${
                         dragActive
-                          ? 'border-emerald-500 bg-emerald-50/50 scale-[1.01]'
-                          : 'border-slate-300 hover:border-emerald-400 bg-slate-50/50 hover:bg-slate-50'
+                          ? 'border-purple-500 bg-purple-50/50 scale-[1.01]'
+                          : 'border-slate-300 hover:border-purple-400 bg-slate-50/50 hover:bg-slate-50'
                       }`}
                     >
                       <input
@@ -1131,7 +1614,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                       />
 
                       <div className="flex flex-col items-center justify-center space-y-1.5">
-                        <div className="p-2.5 bg-white rounded-full shadow-xs text-emerald-600">
+                        <div className="p-2.5 bg-white rounded-full shadow-xs text-purple-600">
                           <UploadCloud className="w-6 h-6 animate-pulse" />
                         </div>
                         <p className="text-xs sm:text-sm font-bold text-slate-800">
@@ -1143,26 +1626,21 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                       </div>
                     </div>
 
-                    {/* Loading bar with symbols when uploading */}
+                    {/* Upload progress indicator */}
                     {isUploading && (
-                      <div className="p-3.5 bg-emerald-50/90 rounded-2xl border border-emerald-200/90 flex items-center justify-between shadow-2xs">
+                      <div className="p-3.5 bg-purple-50/90 rounded-2xl border border-purple-200/90 flex items-center justify-between shadow-2xs">
                         <div className="flex items-center space-x-3">
-                          <div className="relative flex items-center justify-center w-8 h-8 rounded-xl bg-emerald-100 text-emerald-600 shrink-0">
-                            <div className="w-5 h-5 border-2 border-emerald-600/30 border-t-emerald-600 rounded-full animate-spin"></div>
+                          <div className="relative flex items-center justify-center w-8 h-8 rounded-xl bg-purple-100 text-purple-600 shrink-0">
+                            <div className="w-5 h-5 border-2 border-purple-600/30 border-t-purple-600 rounded-full animate-spin"></div>
                           </div>
                           <div>
-                            <p className="text-xs font-bold text-emerald-900">
+                            <p className="text-xs font-bold text-purple-900">
                               กำลังประมวลผลและแนบไฟล์...
                             </p>
-                            <p className="text-[10px] text-emerald-700">
+                            <p className="text-[10px] text-purple-700">
                               ระบบกำลังจัดเตรียมไฟล์งาน กรุณารอสักครู่
                             </p>
                           </div>
-                        </div>
-                        <div className="flex items-center space-x-1.5 pr-1">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-bounce [animation-delay:-0.3s]"></span>
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-bounce [animation-delay:-0.15s]"></span>
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-bounce"></span>
                         </div>
                       </div>
                     )}
@@ -1171,13 +1649,13 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                     {uploadedFiles.length > 0 && (
                       <div className="space-y-2 mt-2">
                         <p className="text-xs font-bold text-slate-700">
-                          รายการไฟล์ที่พร้อมส่ง ({uploadedFiles.length} ไฟล์):
+                          รายการไฟล์ที่แนบไว้ ({uploadedFiles.length} ไฟล์):
                         </p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
                           {uploadedFiles.map((file) => (
                             <div
                               key={file.id}
-                              className="p-2.5 bg-white rounded-xl border border-slate-200 flex items-center justify-between space-x-2 shadow-2xs hover:border-emerald-300 transition-colors"
+                              className="p-2.5 bg-white rounded-xl border border-slate-200 flex items-center justify-between space-x-2 shadow-2xs hover:border-purple-300 transition-colors"
                             >
                               <div className="flex items-center space-x-2 min-w-0">
                                 {file.previewUrl ? (
@@ -1229,7 +1707,10 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                   <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2">
                     <button
                       type="button"
-                      onClick={() => setActiveTaskForSubmission(null)}
+                      onClick={() => {
+                        setActiveTaskForSubmission(null);
+                        setEditingSubmission(null);
+                      }}
                       className="px-4 py-2.5 text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
                     >
                       ยกเลิก
@@ -1237,70 +1718,22 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                     <button
                       type="submit"
                       disabled={isUploading || uploadedFiles.length === 0}
-                      className="btn-glow-emerald px-6 py-2.5 text-xs sm:text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-all shadow-md inline-flex items-center space-x-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className={`px-6 py-2.5 text-xs sm:text-sm font-bold text-white rounded-xl transition-all shadow-md inline-flex items-center space-x-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                        editingSubmission
+                          ? 'btn-glow-emerald bg-emerald-600 hover:bg-emerald-700'
+                          : 'btn-glow-purple bg-purple-600 hover:bg-purple-700'
+                      }`}
                     >
-                      <Send className="w-4 h-4" />
-                      <span>ยืนยันและส่งงานวิชาการ</span>
+                      {editingSubmission ? <Check className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                      <span>
+                        {editingSubmission ? 'บันทึกการแก้ไขการส่งงาน' : 'ยืนยันและส่งงานวิชาการ'}
+                      </span>
                     </button>
                   </div>
                 </form>
               </div>
             </div>
           )}
-
-          {/* Member's past submissions history */}
-          <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-xs">
-            <h2 className="text-base font-bold text-slate-800 mb-3">
-              ประวัติผลงานที่คุณส่งแล้ว ({memberCompletedSubmissions.length} รายการ)
-            </h2>
-
-            {memberCompletedSubmissions.length === 0 ? (
-              <p className="text-xs text-slate-400 py-6 text-center">
-                คุณยังไม่มีประวัติการส่งงานในระบบ
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {memberCompletedSubmissions.map((sub) => {
-                  let formattedDate = '-';
-                  try {
-                    if (sub.submittedAt) {
-                      formattedDate = new Date(sub.submittedAt).toLocaleString('th-TH');
-                    }
-                  } catch {
-                    formattedDate = sub.submittedAt || '-';
-                  }
-
-                  const fileCount = Array.isArray(sub.files) ? sub.files.length : 0;
-
-                  return (
-                    <div
-                      key={sub.id}
-                      className="p-4 rounded-2xl border border-slate-200/80 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-center space-x-2">
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-emerald-100 text-emerald-800 border-emerald-300">
-                            ✓ ส่งงานเรียบร้อยแล้ว
-                          </span>
-                          <span className="text-xs text-slate-500">
-                            ส่งเมื่อ: {formattedDate}
-                          </span>
-                        </div>
-                        <p className="text-sm font-bold text-slate-900">{sub.subject || '-'}</p>
-                        <p className="text-xs text-purple-700 font-medium">{sub.taskTitle || '-'}</p>
-                      </div>
-
-                      <div className="flex items-center space-x-2">
-                        <span className="text-xs text-slate-600 bg-white px-2.5 py-1 rounded-lg border border-slate-200">
-                          {fileCount} ไฟล์แนบ
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
         </div>
       )}
     </div>
