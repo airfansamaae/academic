@@ -40,6 +40,53 @@ export default function App() {
   const [isAuthOpen, setIsAuthOpen] = useState(!currentUser);
   const [preSelectedTask, setPreSelectedTask] = useState<Task | null>(null);
 
+  // Inactivity & Tab Departure Auto-Logout Watchdog (10 minutes)
+  const INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes (600,000 ms)
+  const lastActivityRef = useRef<number>(Date.now());
+  const lastWriteTimeRef = useRef<number>(0);
+
+  // Record user interaction / activity (throttled to at most once every 1.5s)
+  const recordUserActivity = useCallback(() => {
+    const now = Date.now();
+    lastActivityRef.current = now;
+    if (now - lastWriteTimeRef.current > 1500) {
+      lastWriteTimeRef.current = now;
+      try {
+        sessionStorage.setItem('academic_app_last_active_time', String(now));
+      } catch {}
+    }
+  }, []);
+
+  // Check if inactivity has exceeded 10 minutes
+  const checkInactivityTimeout = useCallback(() => {
+    const activeUser = StorageService.getCurrentUser();
+    if (!activeUser) return;
+
+    let lastActive = lastActivityRef.current;
+    try {
+      const storedTime = sessionStorage.getItem('academic_app_last_active_time');
+      if (storedTime) {
+        const parsed = parseInt(storedTime, 10);
+        if (!isNaN(parsed) && parsed > 0) {
+          lastActive = Math.max(lastActive, parsed);
+        }
+      }
+    } catch {}
+
+    const now = Date.now();
+    if (now - lastActive >= INACTIVITY_TIMEOUT_MS) {
+      // Auto-logout user for security
+      StorageService.setCurrentUser(null);
+      setCurrentUser(null);
+      setIsAuthOpen(true);
+      setIsSettingsOpen(false);
+      try {
+        sessionStorage.removeItem('academic_app_last_active_time');
+      } catch {}
+      notifyInfo('ออกจากระบบอัตโนมัติเนื่องจากไม่มีการใช้งานหรือสลับไปหน้าอื่นเกิน 10 นาที (เพื่อความปลอดภัย)');
+    }
+  }, [INACTIVITY_TIMEOUT_MS]);
+
   // Sync data refresh callback
   const refreshData = useCallback(() => {
     setCurrentUser(StorageService.getCurrentUser());
@@ -66,18 +113,26 @@ export default function App() {
   useEffect(() => {
     refreshData();
     performLiveSync();
+    recordUserActivity();
 
     // Fast polling (every 3.5 seconds) for real-time responsiveness across different Google Chrome browsers / devices
     const syncInterval = setInterval(() => {
       performLiveSync();
     }, 3500);
 
-    // Auto-sync immediately when switching to this tab or window receives focus
+    // Periodic inactivity check every 10 seconds
+    const inactivityInterval = setInterval(() => {
+      checkInactivityTimeout();
+    }, 10000);
+
+    // Auto-sync & check inactivity immediately when switching to this tab or window receives focus
     const handleFocus = () => {
+      checkInactivityTimeout();
       performLiveSync();
     };
 
     const handleVisibility = () => {
+      checkInactivityTimeout();
       if (document.visibilityState === 'visible') {
         performLiveSync();
       }
@@ -86,6 +141,9 @@ export default function App() {
     const handleAuthChange = (e: any) => {
       const user = e.detail !== undefined ? e.detail : StorageService.getCurrentUser();
       setCurrentUser(user);
+      if (user) {
+        recordUserActivity();
+      }
       refreshData();
       performLiveSync();
     };
@@ -95,6 +153,12 @@ export default function App() {
       performLiveSync();
     };
 
+    // User activity listeners
+    const activityEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'wheel', 'click'];
+    activityEvents.forEach((evt) => {
+      window.addEventListener(evt, recordUserActivity, { passive: true });
+    });
+
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('academic-auth-change', handleAuthChange);
@@ -103,19 +167,26 @@ export default function App() {
 
     return () => {
       clearInterval(syncInterval);
+      clearInterval(inactivityInterval);
+      activityEvents.forEach((evt) => {
+        window.removeEventListener(evt, recordUserActivity);
+      });
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('academic-auth-change', handleAuthChange);
       window.removeEventListener('academic-realtime-sync', handleRealtimeBroadcast);
       window.removeEventListener('storage', handleRealtimeBroadcast);
     };
-  }, [refreshData, performLiveSync]);
+  }, [refreshData, performLiveSync, checkInactivityTimeout, recordUserActivity]);
 
   // Handle Logout
   const handleLogout = () => {
     StorageService.setCurrentUser(null);
     setCurrentUser(null);
     setIsAuthOpen(true);
+    try {
+      sessionStorage.removeItem('academic_app_last_active_time');
+    } catch {}
     notifyInfo('ออกจากระบบเรียบร้อยแล้ว');
   };
 
@@ -123,6 +194,7 @@ export default function App() {
   const handleLoginSuccess = (user?: User) => {
     const activeUser = user || StorageService.getCurrentUser();
     setCurrentUser(activeUser);
+    recordUserActivity();
     refreshData();
     setIsAuthOpen(false);
   };
