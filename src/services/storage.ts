@@ -468,15 +468,10 @@ export class StorageService {
     try {
       const cleanUser = (username || '').trim().toLowerCase();
       const cleanPass = (password || '').trim();
-      
-      // Attempt fast sync before login to ensure freshest accounts
-      try {
-        await this.syncWithCloudflare();
-      } catch {}
 
       let users = this.getUsers();
 
-      // 1. Master Admin Login (case-insensitive for 'admin', 'administrator', or matches Admin role)
+      // 1. Master Admin Login (Instant - no blocking network wait needed)
       if (cleanUser === 'admin' || cleanUser === 'administrator') {
         let masterAdmin = users.find((u) => u.username.toLowerCase() === 'admin' || u.role === 'ADMIN');
         const isValidPass = cleanPass === '456789' || (masterAdmin && masterAdmin.password === cleanPass);
@@ -491,6 +486,8 @@ export class StorageService {
           masterAdmin.password = cleanPass || '456789';
           this.saveUsers(users);
           this.setCurrentUser(masterAdmin);
+          // Trigger background sync non-blockingly
+          this.syncWithCloudflare().catch(() => {});
           return { success: true, message: 'ยินดีต้อนรับเข้าสู่ระบบในฐานะ Master Admin', user: masterAdmin };
         } else {
           return { success: false, message: 'รหัสผ่านสำหรับ Admin ไม่ถูกต้อง (ค่าเริ่มต้น 456789)' };
@@ -510,8 +507,8 @@ export class StorageService {
 
       let user = findMatchingUser(users);
 
+      // If not found in local cache, do a fast background sync or on-demand fetch
       if (!user) {
-        // Retry one more time with forced sync
         try {
           await this.syncWithCloudflare();
           users = this.getUsers();
@@ -541,10 +538,11 @@ export class StorageService {
       }
 
       this.setCurrentUser(user);
+      // Trigger non-blocking sync in background
+      this.syncWithCloudflare().catch(() => {});
       return { success: true, message: `ยินดีต้อนรับคุณ ${user.fullName}`, user };
     } catch (e) {
       console.error('Login error:', e);
-      // Fallback emergency admin login
       if ((username || '').trim().toLowerCase() === 'admin' && (password || '').trim() === '456789') {
         const adminUser = { ...INITIAL_USERS[0] };
         this.setCurrentUser(adminUser);
@@ -563,12 +561,13 @@ export class StorageService {
       }
       return u;
     });
+    // Immediately save locally for zero-latency UI update
     this.saveUsers(users);
+    broadcastLocalChange('USER_APPROVED', targetUser);
+
     if (targetUser) {
-      try {
-        await CloudflareApiService.syncUser(targetUser);
-      } catch {}
-      broadcastLocalChange('USER_APPROVED', targetUser);
+      // Sync to cloud in background without blocking UI
+      CloudflareApiService.syncUser(targetUser).catch(() => {});
     }
   }
 
