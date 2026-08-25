@@ -35,7 +35,7 @@ export class CloudflareApiService {
   public static async fetchAllData(): Promise<CloudflareSyncPayload | null> {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500);
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
 
       const response = await fetch(`${this.workerUrl}/api/all-data`, {
         method: 'GET',
@@ -68,7 +68,7 @@ export class CloudflareApiService {
         body: JSON.stringify({
           id: task.id,
           title: task.title,
-          type: task.category || 'GENERAL',
+          type: task.category || 'งานวิชาการ',
           description: task.description || '',
           deadline: task.dueDate || '',
           status: 'ACTIVE',
@@ -97,13 +97,15 @@ export class CloudflareApiService {
         body: JSON.stringify({
           id: sub.id,
           taskId: sub.taskId,
+          taskTitle: sub.taskTitle || '',
           memberId: sub.memberId,
           memberName: sub.memberName,
+          department: sub.memberSchool || '',
           status: sub.status,
           note: sub.description || sub.subject || '',
           score: sub.score !== undefined ? sub.score : null,
           feedback: sub.feedback || '',
-          files: sub.files || [],
+          files: Array.isArray(sub.files) ? sub.files : [],
           submittedAt: sub.submittedAt,
           updatedAt: sub.updatedAt,
         }),
@@ -148,18 +150,28 @@ export class CloudflareApiService {
    */
   public static async syncUser(user: User): Promise<boolean> {
     try {
+      const username = user.username || user.fullName || user.id;
+      const password = user.password || '123456';
+      const school = user.school || 'โรงเรียนวิชาการวิทยาคาร';
+      // Encode username and password cleanly inside department separator so worker database without username/password column preserves all credentials
+      const encodedDepartment = `${school}@@@${username}@@@${password}`;
+      const avatarUrl = user.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(username)}`;
+
       const response = await fetch(`${this.workerUrl}/api/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: user.id,
+          id: user.id || `user-${username}`,
+          username: username,
           fullName: user.fullName,
-          department: user.school || '',
+          department: encodedDepartment,
           role: user.role,
           status: user.status,
-          passwordHash: user.password || '',
-          avatarUrl: user.avatarUrl || '',
+          password: password,
+          passwordHash: password,
+          avatarUrl: avatarUrl,
           createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
         }),
       });
       return response.ok;

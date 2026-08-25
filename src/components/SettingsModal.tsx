@@ -137,7 +137,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setSchoolLogoUrl(settings.schoolLogoUrl || '');
       setFooterText(settings.footerText || '');
     }
-  }, [currentUser, settings, isOpen]);
+    if (isOpen) {
+      StorageService.syncWithCloudflare().then(() => {
+        onRefreshData();
+      });
+    }
+  }, [currentUser, settings, isOpen, activeTab, onRefreshData]);
 
   // Handle Avatar Upload directly to Google Drive
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -279,8 +284,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   // 4. Admin Member Approvals & Deletion
-  const handleApprove = (userId: string) => {
-    StorageService.approveUser(userId);
+  const handleApprove = async (userId: string) => {
+    await StorageService.approveUser(userId);
     notifySuccess('อนุมัติการเข้าใช้งานของสมาชิกเรียบร้อยแล้ว');
     onRefreshData();
   };
@@ -291,7 +296,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       'บัญชีผู้ใช้และสิทธิ์การเข้าใช้งานจะถูกลบออกจากระบบ'
     );
     if (ok) {
-      StorageService.deleteUser(userId);
+      await StorageService.deleteUser(userId);
       notifySuccess('ลบผู้ใช้งานสำเร็จ');
       onRefreshData();
     }

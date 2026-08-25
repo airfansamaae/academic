@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   LogIn,
   UserPlus,
@@ -46,7 +46,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [regError, setRegError] = useState('');
   const [regSuccess, setRegSuccess] = useState('');
 
-  const handleLogin = (e: React.FormEvent) => {
+  // Auto-sync when modal opens or mode changes
+  useEffect(() => {
+    if (isOpen) {
+      StorageService.syncWithCloudflare();
+    }
+  }, [isOpen, mode]);
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
 
@@ -61,7 +68,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      const res = StorageService.login(u, p);
+      const res = await StorageService.login(u, p);
       if (res.success && res.user) {
         if (rememberId) {
           StorageService.setRememberedId(u);
@@ -83,7 +90,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setRegError('');
     setRegSuccess('');
@@ -100,7 +107,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      const res = StorageService.registerUser({
+      const res = await StorageService.registerUser({
         fullName: fn,
         username: un,
         password: pw,

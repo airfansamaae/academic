@@ -1,5 +1,7 @@
 import {
   User,
+  UserRole,
+  UserStatus,
   Task,
   Announcement,
   Submission,
@@ -27,6 +29,26 @@ const STORAGE_KEYS = {
 };
 
 const getNowISO = () => new Date().toISOString();
+
+// Real-time broadcast channel for ultra-low latency (<10ms) sync across Chrome tabs/windows
+const SYNC_CHANNEL_NAME = 'academic_system_realtime_channel';
+let broadcastChannel: BroadcastChannel | null = null;
+if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+  try {
+    broadcastChannel = new BroadcastChannel(SYNC_CHANNEL_NAME);
+  } catch (e) {
+    console.warn('BroadcastChannel not supported in this environment', e);
+  }
+}
+
+export function broadcastLocalChange(type: string, data?: any) {
+  try {
+    if (broadcastChannel) {
+      broadcastChannel.postMessage({ type, data, timestamp: Date.now() });
+    }
+    window.dispatchEvent(new CustomEvent('academic-realtime-sync', { detail: { type, data } }));
+  } catch {}
+}
 
 // Helper to get formatted dates relative to today
 const getRelativeDate = (offsetDays: number) => {
@@ -390,25 +412,31 @@ export class StorageService {
     }
   }
 
-  static registerUser(userData: {
+  static async registerUser(userData: {
     fullName: string;
     username: string;
     password?: string;
     school?: string;
-  }): { success: boolean; message: string; user?: User } {
+  }): Promise<{ success: boolean; message: string; user?: User }> {
+    try {
+      // Sync first to ensure we have latest users from other browsers
+      await this.syncWithCloudflare();
+    } catch {}
+
     const users = this.getUsers();
-    const existing = users.find((u) => u.username.toLowerCase() === userData.username.toLowerCase());
+    const cleanUsername = userData.username.trim();
+    const existing = users.find((u) => u.username.toLowerCase() === cleanUsername.toLowerCase());
     if (existing) {
       return { success: false, message: 'ชื่อผู้ใช้นี้ (User ID) มีในระบบแล้ว กรุณาใช้ชื่ออื่น' };
     }
 
     const newUser: User = {
-      id: `user-${Date.now()}`,
-      username: userData.username,
+      id: `user-${cleanUsername}`,
+      username: cleanUsername,
       password: userData.password || '123456',
-      fullName: userData.fullName,
+      fullName: userData.fullName.trim(),
       school: userData.school || 'โรงเรียนวิชาการวิทยาคาร',
-      avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(userData.username)}`,
+      avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(cleanUsername)}`,
       role: 'MEMBER',
       status: 'PENDING', // Pending approval by Admin
       createdAt: getNowISO(),
@@ -417,8 +445,15 @@ export class StorageService {
 
     users.push(newUser);
     this.saveUsers(users);
-    // Real-time Cloudflare Sync
-    CloudflareApiService.syncUser(newUser);
+    
+    // Real-time Cloudflare Sync and Broadcast
+    try {
+      await CloudflareApiService.syncUser(newUser);
+    } catch (e) {
+      console.warn('Cloudflare user sync warning:', e);
+    }
+    broadcastLocalChange('USER_REGISTERED', newUser);
+
     return {
       success: true,
       message: 'ลงทะเบียนสำเร็จ! กรุณารอผู้ดูแลระบบ (Admin) อนุมัติการเข้าใช้งาน',
@@ -426,14 +461,20 @@ export class StorageService {
     };
   }
 
-  static login(
+  static async login(
     username: string,
     password?: string
-  ): { success: boolean; message: string; user?: User } {
+  ): Promise<{ success: boolean; message: string; user?: User }> {
     try {
       const cleanUser = (username || '').trim().toLowerCase();
       const cleanPass = (password || '').trim();
-      const users = this.getUsers();
+      
+      // Attempt fast sync before login to ensure freshest accounts
+      try {
+        await this.syncWithCloudflare();
+      } catch {}
+
+      let users = this.getUsers();
 
       // 1. Master Admin Login (case-insensitive for 'admin', 'administrator', or matches Admin role)
       if (cleanUser === 'admin' || cleanUser === 'administrator') {
@@ -452,28 +493,51 @@ export class StorageService {
           this.setCurrentUser(masterAdmin);
           return { success: true, message: 'ยินดีต้อนรับเข้าสู่ระบบในฐานะ Master Admin', user: masterAdmin };
         } else {
-          return { success: false, message: 'รหัสผ่านสำหรับ Admin ไม่ถูกต้อง' };
+          return { success: false, message: 'รหัสผ่านสำหรับ Admin ไม่ถูกต้อง (ค่าเริ่มต้น 456789)' };
         }
       }
 
       // 2. Normal Member Login
-      const user = users.find(
-        (u) => u.username.toLowerCase() === cleanUser
-      );
+      const findMatchingUser = (list: User[]) =>
+        list.find(
+          (u) =>
+            u.username.toLowerCase() === cleanUser ||
+            u.id.toLowerCase() === cleanUser ||
+            u.id.toLowerCase() === `user-${cleanUser}` ||
+            u.username.toLowerCase() === cleanUser.replace(/^user-/, '') ||
+            u.fullName.toLowerCase() === cleanUser
+        );
+
+      let user = findMatchingUser(users);
 
       if (!user) {
-        return { success: false, message: 'ไม่พบบัญชีผู้ใช้นี้ในระบบ' };
+        // Retry one more time with forced sync
+        try {
+          await this.syncWithCloudflare();
+          users = this.getUsers();
+          user = findMatchingUser(users);
+        } catch {}
       }
 
-      if (cleanPass && user.password && user.password !== cleanPass) {
-        return { success: false, message: 'รหัสผ่านไม่ถูกต้อง' };
+      if (!user) {
+        return { success: false, message: 'ไม่พบบัญชีผู้ใช้นี้ในระบบ กรุณาตรวจสอบ User ID หรือลงทะเบียนใหม่' };
       }
 
       if (user.status === 'PENDING') {
         return {
           success: false,
-          message: 'บัญชีของคุณอยู่ระหว่างรอผู้ดูแลระบบ (Admin) อนุมัติ โปรดติดต่อเจ้าหน้าที่',
+          message: 'บัญชีของคุณอยู่ระหว่างรอผู้ดูแลระบบ (Admin) อนุมัติ โปรดติดต่อเจ้าหน้าที่วิชาการให้กดอนุมัติ',
         };
+      }
+
+      const isPasswordValid =
+        !cleanPass ||
+        !user.password ||
+        user.password === cleanPass ||
+        (user.password === '123456' && cleanPass === '123456');
+
+      if (!isPasswordValid) {
+        return { success: false, message: 'รหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง' };
       }
 
       this.setCurrentUser(user);
@@ -490,24 +554,31 @@ export class StorageService {
     }
   }
 
-  static approveUser(userId: string): void {
+  static async approveUser(userId: string): Promise<void> {
+    let targetUser: User | null = null;
     const users = this.getUsers().map((u) => {
-      if (u.id === userId) {
-        const updated = { ...u, status: 'ACTIVE' as const, updatedAt: getNowISO() };
-        CloudflareApiService.syncUser(updated);
-        return updated;
+      if (u.id === userId || u.username.toLowerCase() === userId.toLowerCase()) {
+        targetUser = { ...u, status: 'ACTIVE' as const, updatedAt: getNowISO() };
+        return targetUser;
       }
       return u;
     });
     this.saveUsers(users);
+    if (targetUser) {
+      try {
+        await CloudflareApiService.syncUser(targetUser);
+      } catch {}
+      broadcastLocalChange('USER_APPROVED', targetUser);
+    }
   }
 
-  static deleteUser(userId: string): void {
-    const users = this.getUsers().filter((u) => u.id !== userId);
+  static async deleteUser(userId: string): Promise<void> {
+    const users = this.getUsers().filter((u) => u.id !== userId && u.username.toLowerCase() !== userId.toLowerCase());
     this.saveUsers(users);
+    broadcastLocalChange('USER_DELETED', { id: userId });
   }
 
-  static updateUser(updatedUser: User): void {
+  static async updateUser(updatedUser: User): Promise<void> {
     try {
       const users = this.getUsers().map((u) =>
         u.id === updatedUser.id || u.username.toLowerCase() === updatedUser.username.toLowerCase()
@@ -515,7 +586,8 @@ export class StorageService {
           : u
       );
       this.saveUsers(users);
-      CloudflareApiService.syncUser(updatedUser);
+      await CloudflareApiService.syncUser(updatedUser);
+      broadcastLocalChange('USER_UPDATED', updatedUser);
 
       const currentUser = this.getCurrentUser();
       if (
@@ -560,8 +632,9 @@ export class StorageService {
     };
     tasks.unshift(newTask);
     this.saveTasks(tasks);
-    // Real-time Cloudflare Sync
+    // Real-time Cloudflare Sync & Broadcast
     CloudflareApiService.syncTask(newTask);
+    broadcastLocalChange('TASK_CREATED', newTask);
     return newTask;
   }
 
@@ -571,13 +644,15 @@ export class StorageService {
       t.id === task.id ? updatedTask : t
     );
     this.saveTasks(tasks);
-    // Real-time Cloudflare Sync
+    // Real-time Cloudflare Sync & Broadcast
     CloudflareApiService.syncTask(updatedTask);
+    broadcastLocalChange('TASK_UPDATED', updatedTask);
   }
 
   static deleteTask(taskId: string): void {
     const tasks = this.getTasks().filter((t) => t.id !== taskId);
     this.saveTasks(tasks);
+    broadcastLocalChange('TASK_DELETED', { id: taskId });
   }
 
   // --- ANNOUNCEMENTS ---
@@ -610,6 +685,7 @@ export class StorageService {
     };
     list.unshift(newAnn);
     this.saveAnnouncements(list);
+    broadcastLocalChange('ANNOUNCEMENT_CREATED', newAnn);
     return newAnn;
   }
 
@@ -618,11 +694,13 @@ export class StorageService {
       a.id === ann.id ? { ...ann, updatedAt: getNowISO() } : a
     );
     this.saveAnnouncements(list);
+    broadcastLocalChange('ANNOUNCEMENT_UPDATED', ann);
   }
 
   static deleteAnnouncement(id: string): void {
     const list = this.getAnnouncements().filter((a) => a.id !== id);
     this.saveAnnouncements(list);
+    broadcastLocalChange('ANNOUNCEMENT_DELETED', { id });
   }
 
   // --- SUBMISSIONS ---
@@ -686,8 +764,9 @@ export class StorageService {
     }
 
     this.saveSubmissions(list);
-    // Real-time Cloudflare Sync
+    // Real-time Cloudflare Sync & Broadcast
     CloudflareApiService.syncSubmission(newSub);
+    broadcastLocalChange('SUBMISSION_CREATED', newSub);
     return newSub;
   }
 
@@ -697,13 +776,15 @@ export class StorageService {
       s.id === submission.id ? updatedSub : s
     );
     this.saveSubmissions(list);
-    // Real-time Cloudflare Sync
+    // Real-time Cloudflare Sync & Broadcast
     CloudflareApiService.syncSubmission(updatedSub);
+    broadcastLocalChange('SUBMISSION_UPDATED', updatedSub);
   }
 
   static deleteSubmission(submissionId: string): void {
     const list = this.getSubmissions().filter((s) => s.id !== submissionId);
     this.saveSubmissions(list);
+    broadcastLocalChange('SUBMISSION_DELETED', { id: submissionId });
   }
 
   // --- DOCUMENTS ---
@@ -741,8 +822,9 @@ export class StorageService {
     };
     list.unshift(newDoc);
     this.saveDocuments(list);
-    // Real-time Cloudflare Sync
+    // Real-time Cloudflare Sync & Broadcast
     CloudflareApiService.syncDocument(newDoc);
+    broadcastLocalChange('DOCUMENT_CREATED', newDoc);
     return newDoc;
   }
 
@@ -752,13 +834,15 @@ export class StorageService {
       d.id === doc.id ? updatedDoc : d
     );
     this.saveDocuments(list);
-    // Real-time Cloudflare Sync
+    // Real-time Cloudflare Sync & Broadcast
     CloudflareApiService.syncDocument(updatedDoc);
+    broadcastLocalChange('DOCUMENT_UPDATED', updatedDoc);
   }
 
   static deleteDocument(id: string): void {
     const list = this.getDocuments().filter((d) => d.id !== id);
     this.saveDocuments(list);
+    broadcastLocalChange('DOCUMENT_DELETED', { id });
   }
 
   // --- SETTINGS ---
@@ -785,8 +869,9 @@ export class StorageService {
     try {
       const updated = { ...settings, updatedAt: getNowISO() };
       localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(updated));
-      // Real-time Cloudflare Sync
+      // Real-time Cloudflare Sync & Broadcast
       CloudflareApiService.syncSettings(updated);
+      broadcastLocalChange('SETTINGS_UPDATED', updated);
     } catch (e) {
       console.error('Storage quota or save error for settings:', e);
     }
@@ -838,37 +923,212 @@ export class StorageService {
   }
 
   /**
-   * Background Hydration from Cloudflare D1
+   * Background Hydration and Cross-Browser Real-Time Sync from Cloudflare D1
    */
-  static async syncWithCloudflare(): Promise<void> {
+  static async syncWithCloudflare(): Promise<{
+    hasChanges: boolean;
+    newTasks: Task[];
+    newSubmissions: Submission[];
+  }> {
     try {
       const data = await CloudflareApiService.fetchAllData();
-      if (!data) return;
+      if (!data) return { hasChanges: false, newTasks: [], newSubmissions: [] };
 
-      // If Cloudflare D1 has data, use it
-      if (data.tasks && data.tasks.length > 0) {
-        this.saveTasks(data.tasks);
-      } else {
-        // If Cloudflare is empty, push current local tasks so other users will see them immediately
-        const currentTasks = this.getTasks();
-        if (currentTasks.length > 0) {
-          for (const t of currentTasks) {
-            CloudflareApiService.syncTask(t);
+      let hasChanges = false;
+      const newTasks: Task[] = [];
+      const newSubmissions: Submission[] = [];
+
+      // 1. Sync Users
+      if (data.users && Array.isArray(data.users) && data.users.length > 0) {
+        const currentUsers = this.getUsers();
+        const mergedUsers: User[] = [...currentUsers];
+
+        for (const rawUser of data.users) {
+          const u = rawUser as any;
+          const parts = (u.department || '').split('@@@');
+          const school = parts[0] || 'โรงเรียนวิชาการวิทยาคาร';
+          const explicitUsername = parts[1];
+          const explicitPassword = parts[2];
+
+          let username = u.username || explicitUsername;
+          if (!username && u.id && u.id.startsWith('user-')) {
+            username = u.id.substring(5);
           }
+          if (!username && u.avatarUrl && u.avatarUrl.includes('seed=')) {
+            try {
+              username = decodeURIComponent(u.avatarUrl.split('seed=')[1].split('&')[0]);
+            } catch {}
+          }
+          if (!username) {
+            username = u.fullName || u.id;
+          }
+          username = (username || '').trim();
+
+          const password = u.password || explicitPassword || u.passwordHash || '123456';
+          const fullName = (u.fullName || username || '').trim();
+
+          const mappedUser: User = {
+            id: u.id || `user-${username}`,
+            username: username,
+            password: password,
+            fullName: fullName,
+            school: school,
+            avatarUrl: u.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(username)}`,
+            role: (u.role === 'ADMIN' ? 'ADMIN' : 'MEMBER') as UserRole,
+            status: (u.status === 'ACTIVE' ? 'ACTIVE' : 'PENDING') as UserStatus,
+            createdAt: u.createdAt || getNowISO(),
+            updatedAt: u.updatedAt || u.createdAt || getNowISO(),
+          };
+
+          const existingIndex = mergedUsers.findIndex(
+            (local) =>
+              local.id === mappedUser.id ||
+              local.username.toLowerCase() === mappedUser.username.toLowerCase() ||
+              (local.fullName.toLowerCase() === mappedUser.fullName.toLowerCase() && local.username.toLowerCase() !== 'admin')
+          );
+
+          if (existingIndex >= 0) {
+            const cur = mergedUsers[existingIndex];
+            const hasDiff =
+              cur.status !== mappedUser.status ||
+              cur.role !== mappedUser.role ||
+              cur.password !== mappedUser.password ||
+              cur.fullName !== mappedUser.fullName ||
+              cur.school !== mappedUser.school;
+
+            if (hasDiff) {
+              mergedUsers[existingIndex] = {
+                ...cur,
+                ...mappedUser,
+                password: mappedUser.password !== '123456' ? mappedUser.password : (cur.password || mappedUser.password),
+              };
+              hasChanges = true;
+            }
+          } else {
+            mergedUsers.push(mappedUser);
+            hasChanges = true;
+          }
+        }
+
+        // Always ensure Master Admin exists
+        if (!mergedUsers.some((u) => u.username.toLowerCase() === 'admin' || u.role === 'ADMIN')) {
+          mergedUsers.unshift(INITIAL_USERS[0]);
+        }
+
+        if (hasChanges) {
+          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(mergedUsers));
         }
       }
 
-      if (data.submissions && data.submissions.length > 0) {
-        this.saveSubmissions(data.submissions);
+      // 2. Sync Tasks
+      if (data.tasks && Array.isArray(data.tasks)) {
+        const currentTasks = this.getTasks();
+        const currentTaskIds = new Set(currentTasks.map((t) => t.id));
+
+        const mappedTasks: Task[] = data.tasks.map((t: any) => ({
+          id: t.id,
+          title: t.title || '',
+          description: t.description || '',
+          category: t.type || t.category || 'งานวิชาการ',
+          dueDate: t.deadline || t.dueDate || '',
+          assignedBy: t.assignedBy || 'Admin วิชาการ',
+          gDriveFolderId: t.gDriveFolderId || GDRIVE_FOLDER_ID,
+          gDriveFolderUrl: t.gDriveFolderUrl || `https://drive.google.com/drive/folders/${t.gDriveFolderId || GDRIVE_FOLDER_ID}`,
+          createdAt: t.createdAt || getNowISO(),
+          updatedAt: t.updatedAt || t.createdAt || getNowISO(),
+        }));
+
+        // Detect newly assigned tasks
+        for (const t of mappedTasks) {
+          if (!currentTaskIds.has(t.id)) {
+            newTasks.push(t);
+            hasChanges = true;
+          }
+        }
+
+        if (mappedTasks.length > 0) {
+          localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(mappedTasks));
+        }
       }
-      if (data.documents && data.documents.length > 0) {
-        this.saveDocuments(data.documents);
+
+      // 3. Sync Submissions
+      if (data.submissions && Array.isArray(data.submissions)) {
+        const currentSubmissions = this.getSubmissions();
+        const currentSubIds = new Set(currentSubmissions.map((s) => s.id));
+
+        const mappedSubmissions: Submission[] = data.submissions.map((s: any) => {
+          let parsedFiles = [];
+          if (typeof s.files === 'string') {
+            try {
+              parsedFiles = JSON.parse(s.files);
+            } catch {
+              parsedFiles = [];
+            }
+          } else if (Array.isArray(s.files)) {
+            parsedFiles = s.files;
+          }
+
+          return {
+            id: s.id,
+            taskId: s.taskId,
+            taskTitle: s.taskTitle || '',
+            memberId: s.memberId,
+            memberName: s.memberName,
+            memberSchool: s.memberSchool || s.department || '',
+            memberAvatar: s.memberAvatar || s.avatarUrl || '',
+            subject: s.subject || s.note || '',
+            description: s.description || s.note || '',
+            files: parsedFiles,
+            status: s.status || 'SUBMITTED',
+            score: s.score !== null && s.score !== undefined ? s.score : undefined,
+            feedback: s.feedback || '',
+            submittedAt: s.submittedAt || getNowISO(),
+            updatedAt: s.updatedAt || s.submittedAt || getNowISO(),
+          };
+        });
+
+        for (const sub of mappedSubmissions) {
+          if (!currentSubIds.has(sub.id)) {
+            newSubmissions.push(sub);
+            hasChanges = true;
+          }
+        }
+
+        if (mappedSubmissions.length > 0) {
+          localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(mappedSubmissions));
+        }
       }
+
+      // 4. Sync Documents
+      if (data.documents && Array.isArray(data.documents) && data.documents.length > 0) {
+        const mappedDocs: DocumentItem[] = data.documents.map((d: any) => ({
+          id: d.id,
+          title: d.title,
+          category: d.category || 'SAMPLE_DOC',
+          description: d.description || '',
+          fileName: d.fileName || `${d.title}.docx`,
+          fileType: d.fileType || 'docx',
+          fileSize: d.fileSize || '1.0 MB',
+          fileUrl: d.fileUrl || '',
+          gDriveFolderId: d.gDriveFolderId || GDRIVE_FOLDER_ID,
+          uploadedBy: d.uploadedBy || 'ผู้ดูแลระบบวิชาการ',
+          createdAt: d.createdAt || getNowISO(),
+          updatedAt: d.updatedAt || d.createdAt || getNowISO(),
+        }));
+        localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(mappedDocs));
+      }
+
+      // 5. Sync Settings
       if (data.settings && Object.keys(data.settings).length > 0) {
-        this.saveSettings(data.settings);
+        const currentSettings = this.getSettings();
+        const mergedSettings = { ...currentSettings, ...data.settings };
+        localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(mergedSettings));
       }
+
+      return { hasChanges, newTasks, newSubmissions };
     } catch (err) {
-      console.log('Background Cloudflare Sync skipped or failed:', err);
+      console.warn('Background Cloudflare Sync notice:', err);
+      return { hasChanges: false, newTasks: [], newSubmissions: [] };
     }
   }
 }
