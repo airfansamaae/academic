@@ -125,24 +125,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [isSavingSchool, setIsSavingSchool] = useState(false);
   const [schoolSavedSuccess, setSchoolSavedSuccess] = useState(false);
 
-  // Sync state whenever props change
+  // Initialize form state ONLY when modal is opened or user changes (do NOT overwrite while user is typing)
   useEffect(() => {
-    if (currentUser) {
+    if (isOpen && currentUser) {
       setFullName(currentUser.fullName || '');
       setSchool(currentUser.school || '');
       setAvatarUrl(currentUser.avatarUrl || '');
-    }
-    if (settings) {
       setSchoolName(settings.schoolName || '');
       setSchoolLogoUrl(settings.schoolLogoUrl || '');
       setFooterText(settings.footerText || '');
+      setNewPassword('');
+      setConfirmPassword('');
+      setProfileSavedSuccess(false);
+      setPasswordSavedSuccess(false);
+      setSchoolSavedSuccess(false);
     }
-    if (isOpen) {
-      StorageService.syncWithCloudflare().then(() => {
-        onRefreshData();
-      });
-    }
-  }, [currentUser, settings, isOpen, activeTab, onRefreshData]);
+  }, [isOpen, currentUser?.id]);
 
   // Handle Avatar Upload directly to Profile & Cloud
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -191,27 +189,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   // 1. Save Profile
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingProfile(true);
 
     try {
+      const cleanName = fullName.trim() || currentUser.fullName || 'ผู้ใช้งาน';
+      const cleanSchool = school.trim() || currentUser.school || settings.schoolName || 'โรงเรียนวิชาการวิทยาคาร';
       const updatedUser: User = {
         ...currentUser,
-        fullName: fullName.trim() || currentUser.fullName || 'ผู้ใช้งาน',
-        school: school.trim() || currentUser.school || 'โรงเรียนวิชาการวิทยาคาร',
+        fullName: cleanName,
+        school: cleanSchool,
         avatarUrl: avatarUrl || currentUser.avatarUrl,
+        updatedAt: new Date().toISOString(),
       };
 
-      StorageService.updateUser(updatedUser);
+      await StorageService.updateUser(updatedUser);
       setProfileSavedSuccess(true);
       notifySuccess('บันทึกข้อมูลส่วนตัวเรียบร้อยแล้ว ✨');
       onRefreshData();
 
       setTimeout(() => {
         setProfileSavedSuccess(false);
-        onClose(); // ปิดหน้าต่างตั้งค่าระบบอัตโนมัติ กลับสู่หน้าหลัก
-      }, 500);
+      }, 2000);
     } catch (err) {
       console.error('Save profile error:', err);
       notifyError('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
@@ -221,7 +221,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   // 2. Save Password
-  const handleSavePassword = (e: React.FormEvent) => {
+  const handleSavePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     const p1 = newPassword.trim();
     const p2 = confirmPassword.trim();
@@ -241,9 +241,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       const updatedUser: User = {
         ...currentUser,
         password: p1,
+        updatedAt: new Date().toISOString(),
       };
 
-      StorageService.updateUser(updatedUser);
+      await StorageService.updateUser(updatedUser);
       setPasswordSavedSuccess(true);
       notifySuccess('เปลี่ยนรหัสผ่านใหม่เรียบร้อยแล้ว 🔒');
       setNewPassword('');
@@ -252,8 +253,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
       setTimeout(() => {
         setPasswordSavedSuccess(false);
-        onClose(); // ปิดหน้าต่างตั้งค่าระบบอัตโนมัติ กลับสู่หน้าหลัก
-      }, 500);
+      }, 2000);
     } catch (err) {
       console.error('Save password error:', err);
       notifyError('เกิดข้อผิดพลาดในการเปลี่ยนรหัสผ่าน');
@@ -262,17 +262,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
-  // 3. Save School & Footer Settings
-  const handleSaveSchoolSettings = (e: React.FormEvent) => {
+  // 3. Save School & Footer Settings (Admin)
+  const handleSaveSchoolSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingSchool(true);
 
     try {
+      const cleanSchoolName = schoolName.trim() || settings.schoolName || 'โรงเรียนวิชาการวิทยาคาร';
+      const cleanFooter = footerText.trim() || settings.footerText || 'ระบบบริหารจัดการงานวิชาการ มอบหมายงานและส่งงาน';
       const updatedSettings: SystemSettings = {
         ...settings,
-        schoolName: schoolName.trim() || settings.schoolName || 'โรงเรียนวิชาการวิทยาคาร',
+        schoolName: cleanSchoolName,
         schoolLogoUrl: schoolLogoUrl || settings.schoolLogoUrl,
-        footerText: footerText.trim() || settings.footerText,
+        footerText: cleanFooter,
+        updatedAt: new Date().toISOString(),
       };
 
       StorageService.saveSettings(updatedSettings);
@@ -282,8 +285,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
       setTimeout(() => {
         setSchoolSavedSuccess(false);
-        onClose(); // ปิดหน้าต่างตั้งค่าระบบอัตโนมัติ กลับสู่หน้าหลัก
-      }, 500);
+      }, 2000);
     } catch (err) {
       console.error('Save school settings error:', err);
       notifyError('เกิดข้อผิดพลาดในการบันทึกข้อมูลสถานศึกษา');
