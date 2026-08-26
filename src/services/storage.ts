@@ -41,6 +41,11 @@ let broadcastChannel: BroadcastChannel | null = null;
 if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
   try {
     broadcastChannel = new BroadcastChannel(SYNC_CHANNEL_NAME);
+    broadcastChannel.onmessage = (event) => {
+      try {
+        window.dispatchEvent(new CustomEvent('academic-realtime-sync', { detail: event.data }));
+      } catch {}
+    };
   } catch (e) {
     console.warn('BroadcastChannel not supported in this environment', e);
   }
@@ -623,11 +628,8 @@ export class StorageService {
   // --- TASKS ---
   static getTasks(): Task[] {
     const raw = localStorage.getItem(STORAGE_KEYS.TASKS);
-    let tasks: Task[];
-    if (raw === null) {
-      tasks = INITIAL_TASKS;
-      localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(INITIAL_TASKS));
-    } else {
+    let tasks: Task[] = [];
+    if (raw !== null) {
       try {
         tasks = JSON.parse(raw);
         if (!Array.isArray(tasks)) tasks = [];
@@ -831,15 +833,17 @@ export class StorageService {
   // --- ANNOUNCEMENTS ---
   static getAnnouncements(): Announcement[] {
     const raw = localStorage.getItem(STORAGE_KEYS.ANNOUNCEMENTS);
-    if (!raw) {
-      localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(INITIAL_ANNOUNCEMENTS));
-      return INITIAL_ANNOUNCEMENTS;
+    let anns: Announcement[] = [];
+    if (raw !== null) {
+      try {
+        anns = JSON.parse(raw);
+        if (!Array.isArray(anns)) anns = [];
+      } catch {
+        anns = [];
+      }
     }
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return INITIAL_ANNOUNCEMENTS;
-    }
+    const deletedAnnIds = this.getDeletedAnnIds();
+    return anns.filter((a) => a && a.id && !deletedAnnIds.has(a.id));
   }
 
   static saveAnnouncements(announcements: Announcement[]): void {
@@ -881,11 +885,8 @@ export class StorageService {
   // --- SUBMISSIONS ---
   static getSubmissions(): Submission[] {
     const raw = localStorage.getItem(STORAGE_KEYS.SUBMISSIONS);
-    let subs: Submission[];
-    if (raw === null) {
-      subs = INITIAL_SUBMISSIONS;
-      localStorage.setItem(STORAGE_KEYS.SUBMISSIONS, JSON.stringify(INITIAL_SUBMISSIONS));
-    } else {
+    let subs: Submission[] = [];
+    if (raw !== null) {
       try {
         subs = JSON.parse(raw);
         if (!Array.isArray(subs)) subs = [];
@@ -982,15 +983,17 @@ export class StorageService {
   // --- DOCUMENTS ---
   static getDocuments(): DocumentItem[] {
     const raw = localStorage.getItem(STORAGE_KEYS.DOCUMENTS);
-    if (!raw) {
-      localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(INITIAL_DOCUMENTS));
-      return INITIAL_DOCUMENTS;
+    let docs: DocumentItem[] = [];
+    if (raw !== null) {
+      try {
+        docs = JSON.parse(raw);
+        if (!Array.isArray(docs)) docs = [];
+      } catch {
+        docs = [];
+      }
     }
-    try {
-      return JSON.parse(raw);
-    } catch {
-      return INITIAL_DOCUMENTS;
-    }
+    const deletedDocIds = this.getDeletedDocIds();
+    return docs.filter((d) => d && d.id && !deletedDocIds.has(d.id));
   }
 
   static saveDocuments(docs: DocumentItem[]): void {

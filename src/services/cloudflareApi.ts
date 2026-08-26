@@ -157,20 +157,38 @@ export class CloudflareApiService {
    */
   public static async deleteTask(id: string): Promise<boolean> {
     try {
-      // Send both DELETE and POST to support various Cloudflare worker route designs
-      const res = await this.fetchWithTimeout(`${this.workerUrl}/api/tasks/${id}`, {
+      // 1. Soft-delete by setting status: 'DELETED' on Cloudflare D1
+      await this.fetchWithTimeout(`${this.workerUrl}/api/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id,
+          title: '[DELETED]',
+          type: 'DELETED',
+          description: '',
+          deadline: '',
+          status: 'DELETED',
+          assigneeIds: [],
+          gDriveFolderId: '',
+          gDriveFolderUrl: '',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }),
+      }, 3500).catch(() => {});
+
+      // 2. Also send DELETE and delete endpoint
+      await this.fetchWithTimeout(`${this.workerUrl}/api/tasks/${id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, _deleted: true }),
-      }, 3500);
+      }, 3500).catch(() => {});
 
-      if (!res.ok) {
-        await this.fetchWithTimeout(`${this.workerUrl}/api/tasks/delete`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id }),
-        }, 3500);
-      }
+      await this.fetchWithTimeout(`${this.workerUrl}/api/tasks/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      }, 3500).catch(() => {});
+
       return true;
     } catch (err) {
       return false;
@@ -182,19 +200,36 @@ export class CloudflareApiService {
    */
   public static async deleteDocument(id: string): Promise<boolean> {
     try {
-      const res = await this.fetchWithTimeout(`${this.workerUrl}/api/documents/${id}`, {
+      // 1. Mark document as deleted on Cloudflare D1
+      await this.fetchWithTimeout(`${this.workerUrl}/api/documents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id,
+          title: '[DELETED]',
+          category: 'DELETED',
+          description: 'DELETED',
+          fileName: '',
+          fileType: '',
+          fileSize: '',
+          fileUrl: '',
+          uploadedBy: 'admin',
+          createdAt: new Date().toISOString(),
+        }),
+      }, 3500).catch(() => {});
+
+      await this.fetchWithTimeout(`${this.workerUrl}/api/documents/${id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, _deleted: true }),
-      }, 3500);
+      }, 3500).catch(() => {});
 
-      if (!res.ok) {
-        await this.fetchWithTimeout(`${this.workerUrl}/api/documents/delete`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id }),
-        }, 3500);
-      }
+      await this.fetchWithTimeout(`${this.workerUrl}/api/documents/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      }, 3500).catch(() => {});
+
       return true;
     } catch (err) {
       return false;
@@ -204,21 +239,41 @@ export class CloudflareApiService {
   /**
    * Delete Submission from Cloudflare D1
    */
-  public static async deleteSubmission(id: string): Promise<boolean> {
+  public static async deleteSubmission(id: string, taskId = ''): Promise<boolean> {
     try {
-      const res = await this.fetchWithTimeout(`${this.workerUrl}/api/submissions/${id}`, {
+      // 1. Soft-delete submission on Cloudflare D1
+      await this.fetchWithTimeout(`${this.workerUrl}/api/submissions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id,
+          taskId: taskId,
+          taskTitle: '',
+          memberId: '',
+          memberName: '',
+          department: '',
+          status: 'DELETED',
+          note: '',
+          score: 0,
+          feedback: '',
+          files: [],
+          submittedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }),
+      }, 3500).catch(() => {});
+
+      await this.fetchWithTimeout(`${this.workerUrl}/api/submissions/${id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, _deleted: true }),
-      }, 3500);
+      }, 3500).catch(() => {});
 
-      if (!res.ok) {
-        await this.fetchWithTimeout(`${this.workerUrl}/api/submissions/delete`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id }),
-        }, 3500);
-      }
+      await this.fetchWithTimeout(`${this.workerUrl}/api/submissions/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      }, 3500).catch(() => {});
+
       return true;
     } catch (err) {
       return false;
@@ -230,19 +285,18 @@ export class CloudflareApiService {
    */
   public static async deleteAnnouncement(id: string): Promise<boolean> {
     try {
-      const res = await this.fetchWithTimeout(`${this.workerUrl}/api/announcements/${id}`, {
+      await this.fetchWithTimeout(`${this.workerUrl}/api/announcements/${id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, _deleted: true }),
-      }, 3500);
+      }, 3500).catch(() => {});
 
-      if (!res.ok) {
-        await this.fetchWithTimeout(`${this.workerUrl}/api/announcements/delete`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id }),
-        }, 3500);
-      }
+      await this.fetchWithTimeout(`${this.workerUrl}/api/announcements/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      }, 3500).catch(() => {});
+
       return true;
     } catch (err) {
       return false;
@@ -252,21 +306,39 @@ export class CloudflareApiService {
   /**
    * Delete User from Cloudflare D1
    */
-  public static async deleteUser(id: string): Promise<boolean> {
+  public static async deleteUser(id: string, username = ''): Promise<boolean> {
     try {
-      const res = await this.fetchWithTimeout(`${this.workerUrl}/api/users/${encodeURIComponent(id)}`, {
+      // 1. Soft-delete user on Cloudflare D1
+      await this.fetchWithTimeout(`${this.workerUrl}/api/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id,
+          username: username || id,
+          fullName: '[DELETED]',
+          department: '',
+          role: 'MEMBER',
+          status: 'DELETED',
+          password: '',
+          passwordHash: '',
+          avatarUrl: '',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }),
+      }, 3500).catch(() => {});
+
+      await this.fetchWithTimeout(`${this.workerUrl}/api/users/${encodeURIComponent(id)}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, _deleted: true }),
-      }, 3500);
+      }, 3500).catch(() => {});
 
-      if (!res.ok) {
-        await this.fetchWithTimeout(`${this.workerUrl}/api/users/delete`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id }),
-        }, 3500);
-      }
+      await this.fetchWithTimeout(`${this.workerUrl}/api/users/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      }, 3500).catch(() => {});
+
       return true;
     } catch (err) {
       return false;
