@@ -341,13 +341,14 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
   };
 
   const handleDeleteTask = async (taskId: string) => {
+    const taskToDelete = tasks.find((t) => t.id === taskId);
     const ok = await confirmDialog(
       'ยืนยันการลบงานนี้?',
-      'การลบงานจะทำให้ภาระงานและรายการส่งงานที่เกี่ยวข้องทั้งหมดถูกลบออกจากระบบทั้งฝั่งแอดมินและสมาชิก'
+      `การลบงาน "${taskToDelete?.title || ''}" จะลบภาระงาน รายการส่งงานของสมาชิกทั้งหมด และส่งคำสั่งลบโฟลเดอร์/ไฟล์ใน Google Drive อัตโนมัติ`
     );
     if (ok) {
       StorageService.deleteTask(taskId);
-      notifySuccess('ลบงานมอบหมายสำเร็จ');
+      notifySuccess('ลบงานมอบหมายและส่งคำสั่งลบโฟลเดอร์ใน Google Drive เรียบร้อยแล้ว 🗑️✨');
       onRefreshData();
     }
   };
@@ -356,11 +357,11 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     if (adminSortedTasks.length === 0) return;
     const ok = await confirmDialog(
       '⚠️ ยืนยันการลบงานทั้งหมด?',
-      'งานมอบหมายทั้งหมด รวมถึงข้อมูลการส่งงานและคะแนนของสมาชิกทุกคนจะถูกลบออกจากระบบอย่างถาวรทั้งฝั่งแอดมินและสมาชิกทันที'
+      'งานมอบหมายทั้งหมด รวมถึงข้อมูลการส่งงานของสมาชิกทุกคน และโฟลเดอร์/ไฟล์ใน Google Drive จะถูกส่งคำสั่งลบออกจากระบบอย่างถาวรทันที'
     );
     if (ok) {
       StorageService.deleteAllTasks();
-      notifySuccess('ลบงานมอบหมายและรายการส่งงานทั้งหมดเรียบร้อยแล้ว');
+      notifySuccess('ลบงานมอบหมายและส่งคำสั่งลบไฟล์ใน Google Drive ทั้งหมดเรียบร้อยแล้ว 🗑️✨');
       onRefreshData();
     }
   };

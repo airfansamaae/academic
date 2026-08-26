@@ -199,11 +199,11 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
 
     const ok = await confirmDialog(
       'ยืนยันการลบผลงานนี้?',
-      'ไฟล์และประวัติการส่งงานนี้จะถูกลบออกจากระบบ'
+      'ไฟล์ผลงานและประวัติการส่งงานนี้จะถูกลบออกจากระบบ และส่งคำสั่งลบไฟล์ใน Google Drive อัตโนมัติ'
     );
     if (ok) {
       StorageService.deleteSubmission(sub.id);
-      notifySuccess('ลบรายการส่งงานสำเร็จ');
+      notifySuccess('ลบรายการส่งงานและส่งคำสั่งลบไฟล์ใน Google Drive เรียบร้อยแล้ว 🗑️✨');
       onRefreshData();
     }
   };
@@ -214,11 +214,11 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
 
     const ok = await confirmDialog(
       `ยืนยันการลบงาน "${taskTitle}"?`,
-      'การลบงานจะนำภาระงานและรายการส่งงานที่เกี่ยวข้องทั้งหมดออกจากระบบอย่างถาวร'
+      'การลบงานจะนำภาระงาน รายการส่งงานของสมาชิกทั้งหมด และโฟลเดอร์ใน Google Drive ออกจากระบบอย่างถาวร'
     );
     if (ok) {
       StorageService.deleteTask(taskId);
-      notifySuccess('ลบงานมอบหมายเรียบร้อยแล้ว');
+      notifySuccess('ลบงานมอบหมายและส่งคำสั่งลบโฟลเดอร์ใน Google Drive เรียบร้อยแล้ว 🗑️✨');
       onRefreshData();
     }
   };

@@ -267,13 +267,15 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
   };
 
   const handleDeleteDoc = async (docId: string) => {
+    const docToDelete = documents.find((d) => d.id === docId);
+    const categoryName = docToDelete?.category === 'OFFICIAL_ORDER' ? 'หนังสือคำสั่ง' : 'เอกสารตัวอย่าง';
     const ok = await confirmDialog(
-      'ยืนยันการลบเอกสารนี้?',
-      'เอกสารจะถูกนำออกจากศูนย์เอกสารวิชาการ'
+      `ยืนยันการลบ${categoryName}นี้?`,
+      `เอกสาร "${docToDelete?.title || ''}" จะถูกนำออกจากระบบและส่งคำสั่งลบไฟล์ออกจาก Google Drive โดยอัตโนมัติ`
     );
     if (ok) {
       StorageService.deleteDocument(docId);
-      notifySuccess('ลบเอกสารเรียบร้อยแล้ว');
+      notifySuccess(`ลบ${categoryName}และส่งคำสั่งลบไฟล์ใน Google Drive เรียบร้อยแล้ว 🗑️✨`);
       onRefreshData();
     }
   };

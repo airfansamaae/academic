@@ -235,12 +235,26 @@ export interface CreateFolderResult {
  * Extracts Google Drive File ID or Folder ID from URL or raw ID string
  */
 export function extractDriveFileId(urlOrId?: string): string | null {
-  if (!urlOrId) return null;
-  if (/^[a-zA-Z0-9_-]{25,}$/.test(urlOrId)) return urlOrId;
+  if (!urlOrId || typeof urlOrId !== 'string') return null;
+  const clean = urlOrId.trim();
+  if (
+    !clean ||
+    clean.startsWith('sample') ||
+    clean.startsWith('doc_') ||
+    clean.startsWith('task_folder_')
+  ) {
+    return null;
+  }
+  // Raw file or folder ID (typically 20-60 characters of letters, digits, -, _)
+  if (/^[a-zA-Z0-9_-]{20,60}$/.test(clean)) {
+    return clean;
+  }
   const match =
-    urlOrId.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) ||
-    urlOrId.match(/id=([a-zA-Z0-9_-]+)/) ||
-    urlOrId.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+    clean.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) ||
+    clean.match(/\/folders\/([a-zA-Z0-9_-]+)/) ||
+    clean.match(/[?&]id=([a-zA-Z0-9_-]+)/) ||
+    clean.match(/\/document\/d\/([a-zA-Z0-9_-]+)/) ||
+    clean.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
   return match ? match[1] : null;
 }
 
