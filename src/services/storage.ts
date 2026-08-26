@@ -992,11 +992,26 @@ export class StorageService {
   }
 
   static updateSubmission(submission: Submission): void {
+    const list = this.getSubmissions();
+    const existingSub = list.find((s) => s.id === submission.id);
+    
+    // Automatic Google Drive Deletion for any files removed during editing
+    if (existingSub && Array.isArray(existingSub.files)) {
+      const remainingUrls = new Set(
+        (submission.files || []).map((f) => f.gDriveUrl).filter(Boolean)
+      );
+      existingSub.files.forEach((f) => {
+        if (f.gDriveUrl && !remainingUrls.has(f.gDriveUrl)) {
+          deleteGoogleDriveFile(f.gDriveUrl).catch(() => {});
+        }
+      });
+    }
+
     const updatedSub = { ...submission, updatedAt: getNowISO() };
-    const list = this.getSubmissions().map((s) =>
+    const updatedList = list.map((s) =>
       s.id === submission.id ? updatedSub : s
     );
-    this.saveSubmissions(list);
+    this.saveSubmissions(updatedList);
     // Real-time Cloudflare Sync & Broadcast
     CloudflareApiService.syncSubmission(updatedSub);
     broadcastLocalChange('SUBMISSION_UPDATED', updatedSub);

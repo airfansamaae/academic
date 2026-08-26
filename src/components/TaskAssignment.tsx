@@ -298,7 +298,12 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
             gDriveFolderId: folderRes.folderId,
             gDriveFolderUrl: folderRes.folderUrl,
           });
-          notifySuccess('บันทึกการมอบหมายงานสำเร็จ เรียบร้อยแล้ว ✨');
+
+          if (folderRes.success) {
+            notifySuccess(`สร้างงานและโฟลเดอร์ Google Drive: "${folderRes.folderName}" สำเร็จเรียบร้อยแล้ว 📁✨`);
+          } else {
+            notifySuccess('บันทึกการมอบหมายงานสำเร็จ เรียบร้อยแล้ว ✨');
+          }
         }
       } else {
         if (editingItemId) {
