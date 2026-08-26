@@ -10,14 +10,24 @@ import {
   SubmissionFile,
 } from '../types';
 import { CloudflareApiService, CLOUDFLARE_WORKER_URL } from './cloudflareApi';
-import { deleteGoogleDriveFile, deleteGoogleDriveFolder } from './driveUpload';
+import {
+  deleteGoogleDriveFile,
+  deleteGoogleDriveFolder,
+  isProtectedRootFolder,
+  GDRIVE_FOLDER_ID,
+  GDRIVE_FOLDER_URL,
+  GDRIVE_OFFICIAL_ORDERS_FOLDER_ID,
+  GDRIVE_SAMPLE_DOCS_FOLDER_ID,
+  GAS_WEBHOOK_URL,
+} from './driveUpload';
 
-export const GDRIVE_FOLDER_ID = '1oOywsmTzdy1CMJDQuzNk9yJhH0lwWVZu';
-export const GDRIVE_FOLDER_URL = `https://drive.google.com/drive/folders/${GDRIVE_FOLDER_ID}`;
-export const GDRIVE_OFFICIAL_ORDERS_FOLDER_ID = '1hHTRwn9UpW43xgOUp8O4Yvn8AvioOey8'; // โฟลเดอร์หนังสือคำสั่ง
-export const GDRIVE_SAMPLE_DOCS_FOLDER_ID = '1zFyOcMUxFzFxDXS0C_x41sA6Sy1E2eZS'; // โฟลเดอร์เอกสารตัวอย่าง
-export const GAS_WEBHOOK_URL =
-  'https://script.google.com/macros/s/AKfycbzve6nmcAMloypZThIb5aRyKfLd3NJCeoddYU8NToVMCXKltjG9WWEI6yA-tetESAt26w/exec';
+export {
+  GDRIVE_FOLDER_ID,
+  GDRIVE_FOLDER_URL,
+  GDRIVE_OFFICIAL_ORDERS_FOLDER_ID,
+  GDRIVE_SAMPLE_DOCS_FOLDER_ID,
+  GAS_WEBHOOK_URL,
+};
 export const CLOUDFLARE_DB_ID = 'databases/9bf82f5b-b9f5-4138-ac36-27dcd09c50e0/metrics';
 
 const STORAGE_KEYS = {
@@ -653,8 +663,8 @@ export class StorageService {
     const newTask: Task = {
       ...task,
       id: `task-${Date.now()}`,
-      gDriveFolderId: task.gDriveFolderId || GDRIVE_FOLDER_ID,
-      gDriveFolderUrl: task.gDriveFolderUrl || `https://drive.google.com/drive/folders/${task.gDriveFolderId || GDRIVE_FOLDER_ID}`,
+      gDriveFolderId: task.gDriveFolderId,
+      gDriveFolderUrl: task.gDriveFolderUrl,
       createdAt: getNowISO(),
       updatedAt: getNowISO(),
     };
@@ -813,12 +823,9 @@ export class StorageService {
     CloudflareApiService.deleteTask(taskId).catch(() => {});
     deletedSubs.forEach((s) => CloudflareApiService.deleteSubmission(s.id).catch(() => {}));
 
-    // 6. Automatic Google Drive Deletion: Task folder & all submission files
-    if (taskToDelete?.gDriveFolderId) {
+    // 6. Automatic Google Drive Deletion: ONLY delete dedicated subfolders (Never delete root folder)
+    if (taskToDelete?.gDriveFolderId && !isProtectedRootFolder(taskToDelete.gDriveFolderId)) {
       deleteGoogleDriveFolder(taskToDelete.gDriveFolderId).catch(() => {});
-    }
-    if (taskToDelete?.gDriveFolderUrl) {
-      deleteGoogleDriveFolder(taskToDelete.gDriveFolderUrl).catch(() => {});
     }
     deletedSubs.forEach((sub) => {
       if (Array.isArray(sub.files)) {
@@ -851,10 +858,11 @@ export class StorageService {
     currentTasks.forEach((t) => CloudflareApiService.deleteTask(t.id).catch(() => {}));
     allSubs.forEach((s) => CloudflareApiService.deleteSubmission(s.id).catch(() => {}));
 
-    // 5. Automatic Google Drive Deletion for all tasks & files
+    // 5. Automatic Google Drive Deletion for all tasks & files (Protect root folders)
     currentTasks.forEach((t) => {
-      if (t.gDriveFolderId) deleteGoogleDriveFolder(t.gDriveFolderId).catch(() => {});
-      if (t.gDriveFolderUrl) deleteGoogleDriveFolder(t.gDriveFolderUrl).catch(() => {});
+      if (t.gDriveFolderId && !isProtectedRootFolder(t.gDriveFolderId)) {
+        deleteGoogleDriveFolder(t.gDriveFolderId).catch(() => {});
+      }
     });
     allSubs.forEach((sub) => {
       if (Array.isArray(sub.files)) {

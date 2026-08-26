@@ -270,7 +270,10 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
       return;
     }
 
-    setIsSaving(true);
+    const title = modalTitle.trim();
+    const desc = modalDescription.trim();
+    const dueDate = modalDate;
+    const assignedBy = currentUser?.fullName || 'ผู้ดูแลระบบวิชาการ';
 
     try {
       if (modalCategory === 'TASK') {
@@ -279,31 +282,37 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
           if (existing) {
             StorageService.updateTask({
               ...existing,
-              title: modalTitle.trim(),
+              title,
               category: 'งานวิชาการ',
-              description: modalDescription.trim(),
-              dueDate: modalDate,
+              description: desc,
+              dueDate,
             });
-            notifySuccess('อัปเดตข้อมูลงานที่มอบหมายสำเร็จ ✨');
+            notifySuccess('บันทึกการแก้ไขสำเร็จ');
           }
         } else {
-          const folderRes = await createGoogleDriveFolder(modalTitle.trim());
-
-          StorageService.createTask({
-            title: modalTitle.trim(),
+          // Instant Task Creation (<1ms response time)
+          const newTask = StorageService.createTask({
+            title,
             category: 'งานวิชาการ',
-            description: modalDescription.trim(),
-            dueDate: modalDate,
-            assignedBy: currentUser?.fullName || 'ผู้ดูแลระบบวิชาการ',
-            gDriveFolderId: folderRes.folderId,
-            gDriveFolderUrl: folderRes.folderUrl,
+            description: desc,
+            dueDate,
+            assignedBy,
           });
 
-          if (folderRes.success) {
-            notifySuccess(`สร้างงานและโฟลเดอร์ Google Drive: "${folderRes.folderName}" สำเร็จเรียบร้อยแล้ว 📁✨`);
-          } else {
-            notifySuccess('บันทึกการมอบหมายงานสำเร็จ เรียบร้อยแล้ว ✨');
-          }
+          notifySuccess('มอบหมายงานสำเร็จ');
+
+          // Asynchronously create folder in background without blocking UI
+          createGoogleDriveFolder(title)
+            .then((folderRes) => {
+              if (folderRes && folderRes.success && folderRes.folderId && !folderRes.folderId.startsWith('task_folder_')) {
+                StorageService.updateTask({
+                  ...newTask,
+                  gDriveFolderId: folderRes.folderId,
+                  gDriveFolderUrl: folderRes.folderUrl,
+                });
+              }
+            })
+            .catch(() => {});
         }
       } else {
         if (editingItemId) {
@@ -311,22 +320,22 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
           if (existing) {
             StorageService.updateAnnouncement({
               ...existing,
-              title: modalTitle.trim(),
-              details: modalDescription.trim(),
-              date: modalDate,
+              title,
+              details: desc,
+              date: dueDate,
               type: modalAnnType,
             });
-            notifySuccess('อัปเดตประกาศแจ้งเพื่อทราบสำเร็จ ✨');
+            notifySuccess('บันทึกการแก้ไขสำเร็จ');
           }
         } else {
           StorageService.createAnnouncement({
-            title: modalTitle.trim(),
-            details: modalDescription.trim(),
-            date: modalDate,
+            title,
+            details: desc,
+            date: dueDate,
             type: modalAnnType,
-            createdBy: currentUser?.fullName || 'ผู้ดูแลระบบวิชาการ',
+            createdBy: assignedBy,
           });
-          notifySuccess('สร้างประกาศแจ้งเพื่อทราบสำเร็จ 📢✨');
+          notifySuccess('สร้างประกาศสำเร็จ');
         }
       }
 
@@ -335,8 +344,6 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     } catch (err) {
       console.error('Save error:', err);
       notifyError('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
-    } finally {
-      setIsSaving(false);
     }
   };
 
@@ -344,11 +351,11 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     const taskToDelete = tasks.find((t) => t.id === taskId);
     const ok = await confirmDialog(
       'ยืนยันการลบงานนี้?',
-      `การลบงาน "${taskToDelete?.title || ''}" จะลบภาระงาน รายการส่งงานของสมาชิกทั้งหมด และส่งคำสั่งลบโฟลเดอร์/ไฟล์ใน Google Drive อัตโนมัติ`
+      `การลบงาน "${taskToDelete?.title || ''}" จะนำภาระงานและรายการส่งงานทั้งหมดออกจากระบบ`
     );
     if (ok) {
       StorageService.deleteTask(taskId);
-      notifySuccess('ลบงานมอบหมายและส่งคำสั่งลบโฟลเดอร์ใน Google Drive เรียบร้อยแล้ว 🗑️✨');
+      notifySuccess('ลบงานมอบหมายสำเร็จ');
       onRefreshData();
     }
   };
@@ -357,11 +364,11 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     if (adminSortedTasks.length === 0) return;
     const ok = await confirmDialog(
       '⚠️ ยืนยันการลบงานทั้งหมด?',
-      'งานมอบหมายทั้งหมด รวมถึงข้อมูลการส่งงานของสมาชิกทุกคน และโฟลเดอร์/ไฟล์ใน Google Drive จะถูกส่งคำสั่งลบออกจากระบบอย่างถาวรทันที'
+      'งานมอบหมายทั้งหมด รวมถึงข้อมูลการส่งงานของสมาชิกจะถูกลบออกจากระบบอย่างถาวร'
     );
     if (ok) {
       StorageService.deleteAllTasks();
-      notifySuccess('ลบงานมอบหมายและส่งคำสั่งลบไฟล์ใน Google Drive ทั้งหมดเรียบร้อยแล้ว 🗑️✨');
+      notifySuccess('ลบงานมอบหมายทั้งหมดสำเร็จ');
       onRefreshData();
     }
   };
@@ -411,7 +418,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
 
       const uploadedResults = await Promise.all(uploadPromises);
       setUploadedFiles((prev) => [...prev, ...uploadedResults]);
-      notifySuccess(`แนบ ${uploadedResults.length} ไฟล์ลงในโฟลเดอร์ "${activeTaskForSubmission?.title || 'งานที่มอบหมาย'}" เรียบร้อยแล้ว ✨`);
+      notifySuccess(`แนบ ${uploadedResults.length} ไฟล์สำเร็จ`);
     } catch (err) {
       console.error('Parallel upload error:', err);
       notifyError('เกิดข้อผิดพลาดในการแนบไฟล์');
@@ -426,7 +433,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
       deleteGoogleDriveFile(fileToRemove.gDriveUrl).catch(() => {});
     }
     setUploadedFiles((prev) => prev.filter((f) => f.id !== fileId));
-    notifyInfo('ลบไฟล์ออกจากรายการและส่งคำสั่งลบออกจาก Google Drive แล้ว');
+    notifyInfo('ลบไฟล์เรียบร้อยแล้ว');
   };
 
   // --- Member Submit or Update Task ---
@@ -461,7 +468,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
         description: submissionDescription.trim(),
         files: uploadedFiles,
       });
-      notifySuccess(`อัปเดตการส่งงาน "${activeTaskForSubmission.title}" สำเร็จเรียบร้อยแล้ว! ✨`);
+      notifySuccess('บันทึกการส่งงานสำเร็จ');
     } else {
       // Create new submission
       StorageService.createSubmission({
@@ -482,7 +489,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
         origin: { y: 0.6 },
       });
 
-      notifySuccess(`ส่งงาน "${activeTaskForSubmission.title}" เข้าสู่ระบบเรียบร้อยแล้ว! 🎉`);
+      notifySuccess('ส่งงานสำเร็จ');
     }
 
     setActiveTaskForSubmission(null);

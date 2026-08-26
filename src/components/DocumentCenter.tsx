@@ -209,12 +209,12 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
       const finalUrl = uploadResult.fileUrl || `https://drive.google.com/drive/folders/${targetFolderId}`;
       setDocFileUrl(finalUrl);
       setIsUploading(false);
-      notifySuccess(`อัปโหลดไฟล์ "${file.name}" เข้าสู่โฟลเดอร์ Google Drive (${folderNameLabel}) เรียบร้อยแล้ว ✨`);
+      notifySuccess(`อัปโหลดไฟล์ "${file.name}" เรียบร้อยแล้ว`);
     } catch (err) {
       console.error('Upload error in Document Center:', err);
       setDocFileUrl(`https://drive.google.com/drive/folders/${targetFolderId}`);
       setIsUploading(false);
-      notifySuccess(`แนบไฟล์ ${file.name} เข้าสู่ระบบเรียบร้อยแล้ว ✨`);
+      notifySuccess(`แนบไฟล์ "${file.name}" เรียบร้อยแล้ว`);
     }
   };
 
@@ -246,7 +246,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
         fileUrl: docFileUrl || editingDoc.fileUrl,
         gDriveFolderId: targetFolderId,
       });
-      notifySuccess('อัปเดตข้อมูลเอกสารสำเร็จ');
+      notifySuccess('บันทึกการแก้ไขสำเร็จ');
     } else {
       StorageService.createDocument({
         title: docTitle.trim(),
@@ -259,7 +259,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
         gDriveFolderId: targetFolderId,
         uploadedBy: currentUser?.fullName || 'ผู้ดูแลระบบวิชาการ',
       });
-      notifySuccess('เพิ่มเอกสารใหม่เข้าสู่ระบบสำเร็จ');
+      notifySuccess('เพิ่มเอกสารสำเร็จ');
     }
 
     setIsModalOpen(false);
@@ -271,11 +271,11 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
     const categoryName = docToDelete?.category === 'OFFICIAL_ORDER' ? 'หนังสือคำสั่ง' : 'เอกสารตัวอย่าง';
     const ok = await confirmDialog(
       `ยืนยันการลบ${categoryName}นี้?`,
-      `เอกสาร "${docToDelete?.title || ''}" จะถูกนำออกจากระบบและส่งคำสั่งลบไฟล์ออกจาก Google Drive โดยอัตโนมัติ`
+      `เอกสาร "${docToDelete?.title || ''}" จะถูกลบออกจากระบบ`
     );
     if (ok) {
       StorageService.deleteDocument(docId);
-      notifySuccess(`ลบ${categoryName}และส่งคำสั่งลบไฟล์ใน Google Drive เรียบร้อยแล้ว 🗑️✨`);
+      notifySuccess(`ลบ${categoryName}สำเร็จ`);
       onRefreshData();
     }
   };

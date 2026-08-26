@@ -1,15 +1,44 @@
 /**
  * Fast and resilient Google Drive upload & management service for academic assignments and submissions
  */
-import {
-  GDRIVE_FOLDER_ID,
-  GDRIVE_FOLDER_URL,
-  GDRIVE_OFFICIAL_ORDERS_FOLDER_ID,
-  GDRIVE_SAMPLE_DOCS_FOLDER_ID,
-} from './storage';
+
+export const GDRIVE_FOLDER_ID = '1oOywsmTzdy1CMJDQuzNk9yJhH0lwWVZu';
+export const GDRIVE_FOLDER_URL = `https://drive.google.com/drive/folders/${GDRIVE_FOLDER_ID}`;
+export const GDRIVE_OFFICIAL_ORDERS_FOLDER_ID = '1hHTRwn9UpW43xgOUp8O4Yvn8AvioOey8'; // โฟลเดอร์หนังสือคำสั่ง
+export const GDRIVE_SAMPLE_DOCS_FOLDER_ID = '1zFyOcMUxFzFxDXS0C_x41sA6Sy1E2eZS'; // โฟลเดอร์เอกสารตัวอย่าง
 
 export const GAS_WEBHOOK_URL =
   'https://script.google.com/macros/s/AKfycbzve6nmcAMloypZThIb5aRyKfLd3NJCeoddYU8NToVMCXKltjG9WWEI6yA-tetESAt26w/exec';
+
+export const PROTECTED_ROOT_FOLDER_IDS = new Set<string>([
+  '1oOywsmTzdy1CMJDQuzNk9yJhH0lwWVZu', // โฟลเดอร์หลัก "วิชาการ Z"
+  '1hHTRwn9UpW43xgOUp8O4Yvn8AvioOey8', // โฟลเดอร์หนังสือคำสั่ง
+  '1zFyOcMUxFzFxDXS0C_x41sA6Sy1E2eZS', // โฟลเดอร์เอกสารตัวอย่าง
+  GDRIVE_FOLDER_ID,
+  GDRIVE_OFFICIAL_ORDERS_FOLDER_ID,
+  GDRIVE_SAMPLE_DOCS_FOLDER_ID,
+]);
+
+/**
+ * Check if a folder ID or URL is a protected root/system folder
+ */
+export function isProtectedRootFolder(folderIdOrUrl?: string): boolean {
+  if (!folderIdOrUrl) return false;
+  const id = extractDriveFileId(folderIdOrUrl);
+  if (!id) return false;
+  if (PROTECTED_ROOT_FOLDER_IDS.has(id)) return true;
+  if (id === GDRIVE_FOLDER_ID) return true;
+  try {
+    const raw = localStorage.getItem('academic_settings');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.gdriveFolderId && (id === parsed.gdriveFolderId || id === extractDriveFileId(parsed.gdriveFolderId))) {
+        return true;
+      }
+    }
+  } catch {}
+  return false;
+}
 
 export const GOOGLE_APPS_SCRIPT_CODE = `/**
  * Google Apps Script Webhook API v2 (ระบบจัดการ Google Drive แบบเรียลไทม์)
@@ -115,10 +144,25 @@ function doPost(e) {
         if (matchFolder) folderId = matchFolder[1];
       }
 
+      // ระบบความปลอดภัย: ห้ามลบโฟลเดอร์หลักของระบบเด็ดขาด
+      var protectedRootList = [
+        '1oOywsmTzdy1CMJDQuzNk9yJhH0lwWVZu',
+        '1hHTRwn9UpW43xgOUp8O4Yvn8AvioOey8',
+        '1zFyOcMUxFzFxDXS0C_x41sA6Sy1E2eZS'
+      ];
+      if (data.parentFolderId) protectedRootList.push(data.parentFolderId);
+
       if (folderId && folderId.length >= 20) {
+        if (protectedRootList.indexOf(folderId) > -1) {
+          return ContentService.createTextOutput(JSON.stringify({
+            status: 'warning',
+            message: 'Protected root folder cannot be deleted'
+          })).setMimeType(ContentService.MimeType.JSON);
+        }
+
         try {
           var folderToDelete = DriveApp.getFolderById(folderId);
-          folderToDelete.setTrashed(true); // ย้ายลงถังขยะ Google Drive
+          folderToDelete.setTrashed(true); // ย้ายลงถังขยะ Google Drive เฉพาะโฟลเดอร์ย่อย
           return ContentService.createTextOutput(JSON.stringify({
             status: 'success',
             action: 'deleteFolder',
@@ -489,9 +533,22 @@ export async function deleteGoogleDriveFolder(
   folderIdOrUrl: string,
   webhookUrl?: string
 ): Promise<boolean> {
+  if (!folderIdOrUrl) return true;
+
+  // SAFETY: Never delete protected root/main system folders (e.g. วิชาการ Z)
+  if (isProtectedRootFolder(folderIdOrUrl)) {
+    console.warn('[PROTECTION] Refused to delete root/system folder:', folderIdOrUrl);
+    return true;
+  }
+
   const activeWebhook = webhookUrl || getActiveGasWebhookUrl();
   const folderId = extractDriveFileId(folderIdOrUrl);
   if (!folderId || folderId.startsWith('task_folder_')) {
+    return true;
+  }
+
+  if (isProtectedRootFolder(folderId)) {
+    console.warn('[PROTECTION] Refused to delete root/system folder ID:', folderId);
     return true;
   }
 
