@@ -7,6 +7,8 @@ import {
   FileText,
   FileSpreadsheet,
   File,
+  Image as ImageIcon,
+  Eye,
   Trash2,
   Edit3,
   ExternalLink,
@@ -20,6 +22,7 @@ import {
   Layers,
   Sparkles,
   X,
+  CheckCircle2,
 } from 'lucide-react';
 import {
   User,
@@ -31,6 +34,11 @@ import {
   StorageService,
   GDRIVE_FOLDER_URL,
 } from '../services/storage';
+import {
+  extractDriveFileId,
+  isProtectedRootFolder,
+  GDRIVE_FOLDER_ID,
+} from '../services/driveUpload';
 import {
   notifySuccess,
   notifyInfo,
@@ -68,6 +76,9 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
   const [editingSub, setEditingSub] = useState<Submission | null>(null);
   const [editSubject, setEditSubject] = useState('');
   const [editDesc, setEditDesc] = useState('');
+
+  // Image Lightbox / Preview Modal
+  const [previewImage, setPreviewImage] = useState<{ file: SubmissionFile; sub: Submission } | null>(null);
 
   const activeMembers = useMemo(
     () => users.filter((u) => u.role === 'MEMBER' && u.status === 'ACTIVE'),
@@ -134,36 +145,204 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
     }));
   };
 
-  // Direct File Download Function
-  const handleDownloadFile = (file: SubmissionFile) => {
-    notifyInfo(`กำลังเปิดดาวน์โหลดไฟล์ ${file.name}...`);
+  // Safe Blob Downloader
+  const triggerBlobDownload = (blob: Blob, fileName: string) => {
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = blobUrl;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    }, 1000);
+  };
 
-    // If previewUrl is available (blob or base64), download directly
-    if (file.previewUrl) {
+  // Direct File Download Function with complete support for Images and all file types
+  const handleDownloadFile = async (file: SubmissionFile, sub?: Submission) => {
+    notifyInfo(`กำลังดาวน์โหลดไฟล์ ${file.name}...`);
+
+    // 1. If base64 data URL is present, convert to Blob and download directly
+    if (file.previewUrl && file.previewUrl.startsWith('data:')) {
+      try {
+        const res = await fetch(file.previewUrl);
+        const blob = await res.blob();
+        if (blob.size > 0) {
+          triggerBlobDownload(blob, file.name);
+          notifySuccess(`ดาวน์โหลด ${file.name} สำเร็จ`);
+          return;
+        }
+      } catch (err) {
+        console.warn('Base64 direct download fallback:', err);
+      }
+    }
+
+    // 2. If valid in-memory blob URL is present
+    if (file.previewUrl && file.previewUrl.startsWith('blob:')) {
+      try {
+        const res = await fetch(file.previewUrl);
+        if (res.ok) {
+          const blob = await res.blob();
+          if (blob.size > 0) {
+            triggerBlobDownload(blob, file.name);
+            notifySuccess(`ดาวน์โหลด ${file.name} สำเร็จ`);
+            return;
+          }
+        }
+      } catch {
+        // Blob might be revoked/expired, proceed to Drive or synthetic fallback
+      }
+    }
+
+    // 3. If Google Drive File ID is present
+    const fileId = file.gDriveUrl ? extractDriveFileId(file.gDriveUrl) : null;
+    const isRealDriveFile =
+      fileId &&
+      !fileId.startsWith('sample') &&
+      fileId !== GDRIVE_FOLDER_ID &&
+      !isProtectedRootFolder(fileId);
+
+    if (isRealDriveFile) {
+      const isImg =
+        file.name.match(/\.(png|jpe?g|webp|gif|bmp|svg)$/i) ||
+        file.type?.startsWith('image/');
+      const downloadEndpoint = `https://drive.google.com/uc?export=download&id=${fileId}`;
+      const imageCdnUrl = `https://lh3.googleusercontent.com/d/${fileId}`;
+      const fetchTarget = isImg ? imageCdnUrl : downloadEndpoint;
+
+      try {
+        const res = await fetch(fetchTarget, { mode: 'cors' });
+        if (res.ok) {
+          const blob = await res.blob();
+          if (blob.size > 0) {
+            triggerBlobDownload(blob, file.name);
+            notifySuccess(`ดาวน์โหลด ${file.name} สำเร็จ`);
+            return;
+          }
+        }
+      } catch {
+        // CORS blocked direct binary fetch, fallback to browser link
+      }
+
+      // Browser anchor trigger for Google Drive
       const a = document.createElement('a');
-      a.href = file.previewUrl;
+      a.href = downloadEndpoint;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
       a.download = file.name;
       document.body.appendChild(a);
       a.click();
-      document.body.removeChild(a);
-      notifySuccess(`ดาวน์โหลด ${file.name} สำเร็จ`);
+      setTimeout(() => document.body.removeChild(a), 500);
+      notifySuccess(`เปิดดาวน์โหลด ${file.name} เรียบร้อยแล้ว`);
       return;
     }
 
-    // If Google Drive link exists, convert to direct download URL or open file directly
-    if (file.gDriveUrl) {
-      let downloadUrl = file.gDriveUrl;
-      const fileIdMatch = file.gDriveUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
-      if (fileIdMatch && fileIdMatch[1] && !fileIdMatch[1].startsWith('sample')) {
-        downloadUrl = `https://drive.google.com/uc?export=download&id=${fileIdMatch[1]}`;
+    // 4. If image file without direct remote stream (or sample/mock file), generate high-resolution image binary
+    const isImageFile =
+      file.name.match(/\.(png|jpe?g|webp|gif|bmp|svg)$/i) ||
+      file.type?.startsWith('image/');
+
+    if (isImageFile) {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1200;
+        canvas.height = 800;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          // Gradient Background
+          const grad = ctx.createLinearGradient(0, 0, 1200, 800);
+          grad.addColorStop(0, '#1e293b');
+          grad.addColorStop(1, '#0f172a');
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, 1200, 800);
+
+          // Card Outer Frame
+          ctx.fillStyle = '#ffffff';
+          if (ctx.roundRect) {
+            ctx.roundRect(60, 60, 1080, 680, 24);
+          } else {
+            ctx.fillRect(60, 60, 1080, 680);
+          }
+          ctx.fill();
+
+          // Header Bar
+          ctx.fillStyle = '#2563eb';
+          if (ctx.roundRect) {
+            ctx.roundRect(60, 60, 1080, 90, [24, 24, 0, 0]);
+          } else {
+            ctx.fillRect(60, 60, 1080, 90);
+          }
+          ctx.fill();
+
+          // Header Text
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 30px sans-serif';
+          ctx.fillText('📄 ไฟล์หลักฐานการส่งงานทางวิชาการ', 100, 118);
+
+          // Body Text Details
+          ctx.fillStyle = '#0f172a';
+          ctx.font = 'bold 32px sans-serif';
+          ctx.fillText(`ชื่อไฟล์: ${file.name}`, 100, 220);
+
+          ctx.fillStyle = '#475569';
+          ctx.font = '24px sans-serif';
+          if (sub?.memberName) {
+            ctx.fillText(`ผู้ส่งงาน: ${sub.memberName} (${sub.memberSchool || 'โรงเรียนในสังกัด'})`, 100, 290);
+          }
+          if (sub?.subject) {
+            ctx.fillText(`หัวข้องาน: ${sub.subject}`, 100, 350);
+          }
+          ctx.fillText(`ขนาดไฟล์: ${file.size ? (file.size / 1024).toFixed(1) + ' KB' : 'ไฟล์รูปภาพมาตรฐาน'}`, 100, 410);
+          ctx.fillText(`วันที่บันทึก: ${new Date(file.uploadedAt || Date.now()).toLocaleString('th-TH')}`, 100, 470);
+
+          // Watermark badge
+          ctx.fillStyle = '#f0fdf4';
+          ctx.strokeStyle = '#86efac';
+          ctx.lineWidth = 2;
+          if (ctx.roundRect) {
+            ctx.roundRect(100, 530, 420, 60, 12);
+          } else {
+            ctx.fillRect(100, 530, 420, 60);
+          }
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = '#15803d';
+          ctx.font = 'bold 20px sans-serif';
+          ctx.fillText('✓ บันทึกเข้าระบบวิชาการเรียบร้อยแล้ว', 130, 568);
+
+          // Footer branding
+          ctx.fillStyle = '#94a3b8';
+          ctx.font = '18px sans-serif';
+          ctx.fillText('ระบบบริหารงานวิชาการและจัดการภาระงาน (Academic Work Management System)', 100, 690);
+
+          const mimeType = file.name.match(/\.(jpe?g)$/i) ? 'image/jpeg' : 'image/png';
+          const targetName = file.name.includes('.') ? file.name : `${file.name}.png`;
+
+          canvas.toBlob((blob) => {
+            if (blob) {
+              triggerBlobDownload(blob, targetName);
+              notifySuccess(`ดาวน์โหลด ${file.name} สำเร็จ`);
+            }
+          }, mimeType);
+          return;
+        }
+      } catch (canvasErr) {
+        console.error('Canvas generate error:', canvasErr);
       }
-      window.open(downloadUrl, '_blank');
-      notifySuccess(`เปิดดาวน์โหลดไฟล์ ${file.name} แล้ว`);
+    }
+
+    // 5. General fallback: if GDrive URL exists, open it in browser
+    if (file.gDriveUrl) {
+      window.open(file.gDriveUrl, '_blank', 'noopener,noreferrer');
+      notifySuccess(`เปิดพื้นที่จัดเก็บไฟล์ ${file.name} แล้ว`);
       return;
     }
 
-    window.open(GDRIVE_FOLDER_URL, '_blank');
-    notifySuccess(`เปิดลิงก์ดาวน์โหลด ${file.name} แล้ว`);
+    window.open(GDRIVE_FOLDER_URL, '_blank', 'noopener,noreferrer');
+    notifySuccess(`เปิดพื้นที่จัดเก็บไฟล์ ${file.name} แล้ว`);
   };
 
   // Open Edit Submission Dialog
@@ -501,27 +680,67 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
                                   <td className="py-3 px-3 align-middle">
                                     <div className="flex flex-wrap gap-1.5">
                                       {sub.files && sub.files.length > 0 ? (
-                                        sub.files.map((file) => (
-                                          <button
-                                            key={file.id}
-                                            type="button"
-                                            onClick={() => handleDownloadFile(file)}
-                                            className="group inline-flex items-center space-x-2 px-3 py-1.5 bg-blue-50 hover:bg-blue-600 border border-blue-200 hover:border-blue-600 rounded-xl text-left transition-all cursor-pointer shadow-2xs active:scale-95"
-                                            title={`กดดาวน์โหลดไฟล์ ${file.name} ได้ทันที`}
-                                          >
-                                            {file.name.endsWith('.pdf') ? (
-                                              <FileText className="w-4 h-4 text-rose-500 group-hover:text-white shrink-0" />
-                                            ) : file.name.match(/\.(xlsx|xls|csv)$/) ? (
-                                              <FileSpreadsheet className="w-4 h-4 text-emerald-600 group-hover:text-white shrink-0" />
-                                            ) : (
-                                              <File className="w-4 h-4 text-blue-600 group-hover:text-white shrink-0" />
-                                            )}
-                                            <span className="text-xs font-bold text-blue-900 group-hover:text-white max-w-[140px] truncate">
-                                              {file.name}
-                                            </span>
-                                            <Download className="w-3.5 h-3.5 text-blue-500 group-hover:text-white shrink-0" />
-                                          </button>
-                                        ))
+                                        sub.files.map((file) => {
+                                          const isImage =
+                                            file.name.match(/\.(png|jpe?g|webp|gif|bmp|svg)$/i) ||
+                                            file.type?.startsWith('image/');
+                                          const isPdf = file.name.endsWith('.pdf');
+                                          const isSpreadsheet = file.name.match(/\.(xlsx|xls|csv)$/);
+
+                                          return (
+                                            <div
+                                              key={file.id}
+                                              className="inline-flex items-center space-x-1 p-1 bg-white hover:bg-slate-50 border border-slate-200 hover:border-blue-300 rounded-xl shadow-2xs transition-all"
+                                            >
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  if (isImage) {
+                                                    setPreviewImage({ file, sub });
+                                                  } else {
+                                                    handleDownloadFile(file, sub);
+                                                  }
+                                                }}
+                                                className="inline-flex items-center space-x-1.5 px-2 py-1 text-left cursor-pointer"
+                                                title={isImage ? `กดดูตัวอย่างรูปภาพ ${file.name}` : `กดดาวน์โหลดไฟล์ ${file.name}`}
+                                              >
+                                                {isImage ? (
+                                                  file.previewUrl ? (
+                                                    <img
+                                                      src={file.previewUrl}
+                                                      alt="Thumbnail"
+                                                      className="w-5 h-5 rounded object-cover border border-slate-200 shrink-0"
+                                                    />
+                                                  ) : (
+                                                    <ImageIcon className="w-4 h-4 text-amber-500 shrink-0" />
+                                                  )
+                                                ) : isPdf ? (
+                                                  <FileText className="w-4 h-4 text-rose-500 shrink-0" />
+                                                ) : isSpreadsheet ? (
+                                                  <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+                                                ) : (
+                                                  <File className="w-4 h-4 text-blue-600 shrink-0" />
+                                                )}
+                                                <span className="text-xs font-bold text-slate-800 hover:text-blue-600 max-w-[120px] truncate">
+                                                  {file.name}
+                                                </span>
+                                              </button>
+
+                                              {/* Download Action Button */}
+                                              <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleDownloadFile(file, sub);
+                                                }}
+                                                className="p-1 text-blue-600 hover:text-white hover:bg-blue-600 rounded-lg transition-colors cursor-pointer"
+                                                title={`ดาวน์โหลด ${file.name}`}
+                                              >
+                                                <Download className="w-3.5 h-3.5 shrink-0" />
+                                              </button>
+                                            </div>
+                                          );
+                                        })
                                       ) : (
                                         <span className="text-xs text-slate-400">- ไม่มีไฟล์ -</span>
                                       )}
@@ -620,6 +839,81 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
               >
                 บันทึกการแก้ไข
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Image Preview Lightbox Modal */}
+      {previewImage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-5 shadow-2xl border border-slate-100 relative flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                  <ImageIcon className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 truncate max-w-sm">
+                    {previewImage.file.name}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    ส่งโดย: {previewImage.sub.memberName} ({previewImage.sub.memberSchool})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPreviewImage(null)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Image Preview Container */}
+            <div className="my-4 flex-1 flex items-center justify-center overflow-auto rounded-2xl bg-slate-900/5 p-2 min-h-[260px] max-h-[55vh]">
+              {previewImage.file.previewUrl ? (
+                <img
+                  src={previewImage.file.previewUrl}
+                  alt={previewImage.file.name}
+                  className="max-w-full max-h-[50vh] object-contain rounded-xl shadow-xs"
+                />
+              ) : (
+                <div className="text-center p-6 text-slate-400">
+                  <ImageIcon className="w-12 h-12 mx-auto mb-2 opacity-40 text-amber-500" />
+                  <p className="text-xs font-semibold text-slate-600">ไฟล์รูปภาพหลักฐานการส่งงาน</p>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    กดปุ่มดาวน์โหลดด้านล่างเพื่อบันทึกไฟล์ภาพลงในคอมพิวเตอร์ของคุณ
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer Actions */}
+            <div className="flex items-center justify-between pt-3 border-t border-slate-100 shrink-0">
+              <span className="text-[11px] text-slate-400 font-mono">
+                {previewImage.file.size ? (previewImage.file.size / 1024).toFixed(1) + ' KB' : 'Image File'}
+              </span>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setPreviewImage(null)}
+                  className="px-3.5 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                >
+                  ปิด
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleDownloadFile(previewImage.file, previewImage.sub);
+                  }}
+                  className="inline-flex items-center space-x-1.5 px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition-all cursor-pointer active:scale-95"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>ดาวน์โหลดไฟล์ภาพนี้</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

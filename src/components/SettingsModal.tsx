@@ -153,6 +153,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [diagStep3, setDiagStep3] = useState<'idle' | 'running' | 'success' | 'failed'>('idle');
   const [diagLog, setDiagLog] = useState<string | null>(null);
 
+  // Admin Member Approvals & Deletion with Zero-Latency Optimistic State
+  const [localUsers, setLocalUsers] = useState<User[]>(users);
+
+  useEffect(() => {
+    setLocalUsers(users);
+  }, [users]);
+
   // Initialize form state ONLY when modal is opened or user changes (do NOT overwrite while user is typing)
   useEffect(() => {
     if (isOpen && currentUser) {
@@ -434,12 +441,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   // 4. Admin Member Approvals & Deletion with Zero-Latency Optimistic State
-  const [localUsers, setLocalUsers] = useState<User[]>(users);
-
-  useEffect(() => {
-    setLocalUsers(users);
-  }, [users]);
-
   const handleApprove = async (userId: string) => {
     // Instant optimistic update on UI
     setLocalUsers((prev) =>

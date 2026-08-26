@@ -974,10 +974,10 @@ export class StorageService {
     files: SubmissionFile[];
   }): Submission {
     const list = this.getSubmissions();
-    // Sanitize files so they never store gigantic raw base64 data in localStorage
+    // Sanitize files so they can store valid data URLs and preview links safely
     const safeFiles = (submissionData.files || []).map((f) => ({
       ...f,
-      previewUrl: f.previewUrl && f.previewUrl.startsWith('data:') && f.previewUrl.length > 50000 ? undefined : f.previewUrl,
+      previewUrl: f.previewUrl && f.previewUrl.startsWith('data:') && f.previewUrl.length > 500000 ? undefined : f.previewUrl,
     }));
 
     // Check if user already submitted for this task
