@@ -26,8 +26,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onClose,
   onLoginSuccess,
 }) => {
-  if (!isOpen) return null;
-
   const [mode, setMode] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
 
   // Login Form
@@ -52,6 +50,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       StorageService.syncWithCloudflare();
     }
   }, [isOpen, mode]);
+
+  if (!isOpen) return null;
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

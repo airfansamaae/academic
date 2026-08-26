@@ -116,17 +116,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   users,
   onRefreshData,
 }) => {
-  if (!isOpen || !currentUser) return null;
-
-  const isAdmin = currentUser.role === 'ADMIN';
+  const isAdmin = currentUser?.role === 'ADMIN';
 
   // Tabs: 'PROFILE' | 'PASSWORD' | 'SCHOOL' | 'MEMBERS' | 'GDRIVE'
   const [activeTab, setActiveTab] = useState<'PROFILE' | 'PASSWORD' | 'SCHOOL' | 'MEMBERS' | 'GDRIVE'>('PROFILE');
 
   // Profile Form State
-  const [fullName, setFullName] = useState(currentUser.fullName || '');
-  const [school, setSchool] = useState(currentUser.school || '');
-  const [avatarUrl, setAvatarUrl] = useState(currentUser.avatarUrl || '');
+  const [fullName, setFullName] = useState(currentUser?.fullName || '');
+  const [school, setSchool] = useState(currentUser?.school || '');
+  const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatarUrl || '');
 
   // Password Form State
   const [newPassword, setNewPassword] = useState('');
@@ -154,6 +152,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [diagStep2, setDiagStep2] = useState<'idle' | 'running' | 'success' | 'failed'>('idle');
   const [diagStep3, setDiagStep3] = useState<'idle' | 'running' | 'success' | 'failed'>('idle');
   const [diagLog, setDiagLog] = useState<string | null>(null);
+
+  // Initialize form state ONLY when modal is opened or user changes (do NOT overwrite while user is typing)
+  useEffect(() => {
+    if (isOpen && currentUser) {
+      setFullName(currentUser.fullName || '');
+      setSchool(currentUser.school || '');
+      setAvatarUrl(currentUser.avatarUrl || '');
+      setSchoolName(settings.schoolName || '');
+      setSchoolLogoUrl(settings.schoolLogoUrl || '');
+      setFooterText(settings.footerText || '');
+      setNewPassword('');
+      setConfirmPassword('');
+      setProfileSavedSuccess(false);
+      setPasswordSavedSuccess(false);
+      setSchoolSavedSuccess(false);
+    }
+  }, [isOpen, currentUser?.id]);
+
+  if (!isOpen || !currentUser) return null;
 
   const handleCopyCode = async () => {
     try {
@@ -260,23 +277,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setIsDiagnosing(false);
     }
   };
-
-  // Initialize form state ONLY when modal is opened or user changes (do NOT overwrite while user is typing)
-  useEffect(() => {
-    if (isOpen && currentUser) {
-      setFullName(currentUser.fullName || '');
-      setSchool(currentUser.school || '');
-      setAvatarUrl(currentUser.avatarUrl || '');
-      setSchoolName(settings.schoolName || '');
-      setSchoolLogoUrl(settings.schoolLogoUrl || '');
-      setFooterText(settings.footerText || '');
-      setNewPassword('');
-      setConfirmPassword('');
-      setProfileSavedSuccess(false);
-      setPasswordSavedSuccess(false);
-      setSchoolSavedSuccess(false);
-    }
-  }, [isOpen, currentUser?.id]);
 
   // Handle Avatar Upload directly to Profile & Cloud
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
