@@ -34,6 +34,7 @@ import {
 import {
   StorageService,
   GDRIVE_FOLDER_URL,
+  GDRIVE_FOLDER_ID,
 } from '../services/storage';
 import { uploadFileToGoogleDrive, createGoogleDriveFolder } from '../services/driveUpload';
 import {
@@ -370,17 +371,18 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
 
     setIsUploading(true);
     const fileList = Array.from(files);
+    const targetFolderId = activeTaskForSubmission?.gDriveFolderId || GDRIVE_FOLDER_ID;
 
     try {
       const uploadPromises = fileList.map(async (file, i) => {
         try {
-          const result = await uploadFileToGoogleDrive(file);
+          const result = await uploadFileToGoogleDrive(file, targetFolderId);
           return {
             id: `file-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`,
             name: file.name,
             size: file.size,
             type: file.type || 'application/octet-stream',
-            gDriveUrl: result.fileUrl || GDRIVE_FOLDER_URL,
+            gDriveUrl: result.fileUrl || `https://drive.google.com/drive/folders/${targetFolderId}`,
             previewUrl: result.downloadUrl,
             uploadedAt: new Date().toISOString(),
           } as SubmissionFile;
@@ -391,7 +393,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
             name: file.name,
             size: file.size,
             type: file.type || 'application/octet-stream',
-            gDriveUrl: GDRIVE_FOLDER_URL,
+            gDriveUrl: `https://drive.google.com/drive/folders/${targetFolderId}`,
             uploadedAt: new Date().toISOString(),
           } as SubmissionFile;
         }
@@ -399,7 +401,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
 
       const uploadedResults = await Promise.all(uploadPromises);
       setUploadedFiles((prev) => [...prev, ...uploadedResults]);
-      notifySuccess(`แนบ ${uploadedResults.length} ไฟล์เรียบร้อยแล้ว ✨`);
+      notifySuccess(`แนบ ${uploadedResults.length} ไฟล์ลงในโฟลเดอร์ "${activeTaskForSubmission?.title || 'งานที่มอบหมาย'}" เรียบร้อยแล้ว ✨`);
     } catch (err) {
       console.error('Parallel upload error:', err);
       notifyError('เกิดข้อผิดพลาดในการแนบไฟล์');

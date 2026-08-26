@@ -10,9 +10,12 @@ import {
   SubmissionFile,
 } from '../types';
 import { CloudflareApiService, CLOUDFLARE_WORKER_URL } from './cloudflareApi';
+import { deleteGoogleDriveFile, deleteGoogleDriveFolder } from './driveUpload';
 
 export const GDRIVE_FOLDER_ID = '1oOywsmTzdy1CMJDQuzNk9yJhH0lwWVZu';
 export const GDRIVE_FOLDER_URL = `https://drive.google.com/drive/folders/${GDRIVE_FOLDER_ID}`;
+export const GDRIVE_OFFICIAL_ORDERS_FOLDER_ID = '1hHTRwn9UpW43xgOUp8O4Yvn8AvioOey8'; // โฟลเดอร์หนังสือคำสั่ง
+export const GDRIVE_SAMPLE_DOCS_FOLDER_ID = '1zFyOcMUxFzFxDXS0C_x41sA6Sy1E2eZS'; // โฟลเดอร์เอกสารตัวอย่าง
 export const GAS_WEBHOOK_URL =
   'https://script.google.com/macros/s/AKfycbzve6nmcAMloypZThIb5aRyKfLd3NJCeoddYU8NToVMCXKltjG9WWEI6yA-tetESAt26w/exec';
 export const CLOUDFLARE_DB_ID = 'databases/9bf82f5b-b9f5-4138-ac36-27dcd09c50e0/metrics';
@@ -793,6 +796,7 @@ export class StorageService {
 
     // 2. Remove task from local storage
     const currentTasks = this.getTasks();
+    const taskToDelete = currentTasks.find((t) => t.id === taskId);
     const tasks = currentTasks.filter((t) => t.id !== taskId);
     this.saveTasks(tasks);
 
@@ -807,7 +811,21 @@ export class StorageService {
     CloudflareApiService.deleteTask(taskId).catch(() => {});
     deletedSubs.forEach((s) => CloudflareApiService.deleteSubmission(s.id).catch(() => {}));
 
-    // 5. Broadcast deletion to all local tabs & devices
+    // 5. Automatic Google Drive Deletion: Task folder & all submission files
+    if (taskToDelete?.gDriveFolderId) {
+      deleteGoogleDriveFolder(taskToDelete.gDriveFolderId).catch(() => {});
+    }
+    deletedSubs.forEach((sub) => {
+      if (Array.isArray(sub.files)) {
+        sub.files.forEach((f) => {
+          if (f.gDriveUrl) {
+            deleteGoogleDriveFile(f.gDriveUrl).catch(() => {});
+          }
+        });
+      }
+    });
+
+    // 6. Broadcast deletion to all local tabs & devices
     broadcastLocalChange('TASK_DELETED', { id: taskId, deletedSubmissions: deletedSubs.map((s) => s.id) });
   }
 
@@ -826,7 +844,19 @@ export class StorageService {
     currentTasks.forEach((t) => CloudflareApiService.deleteTask(t.id).catch(() => {}));
     allSubs.forEach((s) => CloudflareApiService.deleteSubmission(s.id).catch(() => {}));
 
-    // 4. Broadcast deletion to all tabs
+    // 4. Automatic Google Drive Deletion for all tasks & files
+    currentTasks.forEach((t) => {
+      if (t.gDriveFolderId) deleteGoogleDriveFolder(t.gDriveFolderId).catch(() => {});
+    });
+    allSubs.forEach((sub) => {
+      if (Array.isArray(sub.files)) {
+        sub.files.forEach((f) => {
+          if (f.gDriveUrl) deleteGoogleDriveFile(f.gDriveUrl).catch(() => {});
+        });
+      }
+    });
+
+    // 5. Broadcast deletion to all tabs
     broadcastLocalChange('ALL_TASKS_DELETED', { count: currentTasks.length });
   }
 
@@ -974,9 +1004,19 @@ export class StorageService {
 
   static deleteSubmission(submissionId: string): void {
     this.addDeletedSubId(submissionId);
-    const list = this.getSubmissions().filter((s) => s.id !== submissionId);
-    this.saveSubmissions(list);
+    const list = this.getSubmissions();
+    const subToDelete = list.find((s) => s.id === submissionId);
+    const updatedList = list.filter((s) => s.id !== submissionId);
+    this.saveSubmissions(updatedList);
     CloudflareApiService.deleteSubmission(submissionId);
+
+    // Automatic Google Drive Deletion for submission files
+    if (subToDelete && Array.isArray(subToDelete.files)) {
+      subToDelete.files.forEach((f) => {
+        if (f.gDriveUrl) deleteGoogleDriveFile(f.gDriveUrl).catch(() => {});
+      });
+    }
+
     broadcastLocalChange('SUBMISSION_DELETED', { id: submissionId });
   }
 
@@ -1005,13 +1045,19 @@ export class StorageService {
   }
 
   static createDocument(
-    doc: Omit<DocumentItem, 'id' | 'createdAt' | 'updatedAt' | 'gDriveFolderId'>
+    doc: Omit<DocumentItem, 'id' | 'createdAt' | 'updatedAt' | 'gDriveFolderId'> & { gDriveFolderId?: string }
   ): DocumentItem {
     const list = this.getDocuments();
+    const folderId =
+      doc.gDriveFolderId ||
+      (doc.category === 'OFFICIAL_ORDER'
+        ? GDRIVE_OFFICIAL_ORDERS_FOLDER_ID
+        : GDRIVE_SAMPLE_DOCS_FOLDER_ID);
+
     const newDoc: DocumentItem = {
       ...doc,
       id: `doc-${Date.now()}`,
-      gDriveFolderId: GDRIVE_FOLDER_ID,
+      gDriveFolderId: folderId,
       createdAt: getNowISO(),
       updatedAt: getNowISO(),
     };
@@ -1036,9 +1082,17 @@ export class StorageService {
 
   static deleteDocument(id: string): void {
     this.addDeletedDocId(id);
-    const list = this.getDocuments().filter((d) => d.id !== id);
-    this.saveDocuments(list);
+    const list = this.getDocuments();
+    const docToDelete = list.find((d) => d.id === id);
+    const updatedList = list.filter((d) => d.id !== id);
+    this.saveDocuments(updatedList);
     CloudflareApiService.deleteDocument(id);
+
+    // Automatic Google Drive Deletion for document file
+    if (docToDelete?.fileUrl) {
+      deleteGoogleDriveFile(docToDelete.fileUrl).catch(() => {});
+    }
+
     broadcastLocalChange('DOCUMENT_DELETED', { id });
   }
 

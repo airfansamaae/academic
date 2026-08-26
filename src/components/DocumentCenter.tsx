@@ -24,6 +24,8 @@ import { User, DocumentItem, DocumentCategory } from '../types';
 import {
   StorageService,
   GDRIVE_FOLDER_URL,
+  GDRIVE_OFFICIAL_ORDERS_FOLDER_ID,
+  GDRIVE_SAMPLE_DOCS_FOLDER_ID,
 } from '../services/storage';
 import { uploadFileToGoogleDrive } from '../services/driveUpload';
 import {
@@ -195,16 +197,24 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
       setDocTitle(baseName);
     }
 
+    const targetFolderId =
+      docCategory === 'OFFICIAL_ORDER'
+        ? GDRIVE_OFFICIAL_ORDERS_FOLDER_ID
+        : GDRIVE_SAMPLE_DOCS_FOLDER_ID;
+
+    const folderNameLabel = docCategory === 'OFFICIAL_ORDER' ? 'หนังสือคำสั่ง' : 'เอกสารตัวอย่าง';
+
     try {
-      const uploadResult = await uploadFileToGoogleDrive(file);
-      setDocFileUrl(uploadResult.fileUrl || GDRIVE_FOLDER_URL);
+      const uploadResult = await uploadFileToGoogleDrive(file, targetFolderId);
+      const finalUrl = uploadResult.fileUrl || `https://drive.google.com/drive/folders/${targetFolderId}`;
+      setDocFileUrl(finalUrl);
       setIsUploading(false);
-      notifySuccess(`แนบไฟล์ "${file.name}" เรียบร้อยแล้ว ✨`);
+      notifySuccess(`อัปโหลดไฟล์ "${file.name}" เข้าสู่โฟลเดอร์ Google Drive (${folderNameLabel}) เรียบร้อยแล้ว ✨`);
     } catch (err) {
       console.error('Upload error in Document Center:', err);
-      setDocFileUrl(GDRIVE_FOLDER_URL);
+      setDocFileUrl(`https://drive.google.com/drive/folders/${targetFolderId}`);
       setIsUploading(false);
-      notifySuccess(`แนบไฟล์ ${file.name} เรียบร้อยแล้ว ✨`);
+      notifySuccess(`แนบไฟล์ ${file.name} เข้าสู่ระบบเรียบร้อยแล้ว ✨`);
     }
   };
 
@@ -219,6 +229,11 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
       return;
     }
 
+    const targetFolderId =
+      docCategory === 'OFFICIAL_ORDER'
+        ? GDRIVE_OFFICIAL_ORDERS_FOLDER_ID
+        : GDRIVE_SAMPLE_DOCS_FOLDER_ID;
+
     if (editingDoc) {
       StorageService.updateDocument({
         ...editingDoc,
@@ -229,6 +244,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
         fileType: docFileType,
         fileSize: docFileSize || '1.0 MB',
         fileUrl: docFileUrl || editingDoc.fileUrl,
+        gDriveFolderId: targetFolderId,
       });
       notifySuccess('อัปเดตข้อมูลเอกสารสำเร็จ');
     } else {
@@ -239,7 +255,8 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
         fileName: docFileName.trim(),
         fileType: docFileType,
         fileSize: docFileSize || '1.0 MB',
-        fileUrl: docFileUrl || `https://drive.google.com/file/d/doc_${Date.now()}/view`,
+        fileUrl: docFileUrl || `https://drive.google.com/drive/folders/${targetFolderId}`,
+        gDriveFolderId: targetFolderId,
         uploadedBy: currentUser?.fullName || 'ผู้ดูแลระบบวิชาการ',
       });
       notifySuccess('เพิ่มเอกสารใหม่เข้าสู่ระบบสำเร็จ');
