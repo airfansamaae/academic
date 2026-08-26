@@ -11,6 +11,179 @@ import {
 export const GAS_WEBHOOK_URL =
   'https://script.google.com/macros/s/AKfycbzve6nmcAMloypZThIb5aRyKfLd3NJCeoddYU8NToVMCXKltjG9WWEI6yA-tetESAt26w/exec';
 
+export const GOOGLE_APPS_SCRIPT_CODE = `/**
+ * Google Apps Script Webhook API v2 for Academic Management System
+ * รองรับ:
+ * 1. สร้างโฟลเดอร์ตามหัวข้องานมอบหมายอัตโนมัติ (createFolder)
+ * 2. อัปโหลดไฟล์ตรงเข้าโฟลเดอร์เป้าหมาย (upload)
+ * 3. ลบไฟล์ออกจาก Google Drive อัตโนมัติเมื่อ Admin หรือสมาชิกลบ (deleteFile)
+ * 4. ลบโฟลเดอร์งานมอบหมายออกจาก Google Drive อัตโนมัติ (deleteFolder)
+ */
+
+function doPost(e) {
+  try {
+    if (!e || !e.postData || !e.postData.contents) {
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'error',
+        message: 'No post data received'
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    var data = JSON.parse(e.postData.contents);
+    var action = data.action || 'upload';
+
+    // ----------------------------------------------------
+    // 1. ACTION: สร้างโฟลเดอร์ตามหัวข้องานมอบหมาย
+    // ----------------------------------------------------
+    if (action === 'createFolder') {
+      var folderName = data.folderName || data.name || 'งานที่มอบหมาย';
+      var parentId = data.parentFolderId || data.folderId || '1oOywsmTzdy1CMJDQuzNk9yJhH0lwWVZu';
+      var parentFolder;
+      try {
+        parentFolder = DriveApp.getFolderById(parentId);
+      } catch (err) {
+        parentFolder = DriveApp.getRootFolder();
+      }
+
+      // ตรวจสอบว่ามีโฟลเดอร์ชื่อนี้อยู่แล้วหรือไม่
+      var existingFolders = parentFolder.getFoldersByName(folderName);
+      var targetFolder;
+      if (existingFolders.hasNext()) {
+        targetFolder = existingFolders.next();
+      } else {
+        targetFolder = parentFolder.createFolder(folderName);
+      }
+
+      // เปิดสิทธิ์แชร์แบบดูได้สำหรับทุกคนที่มีลิงก์
+      try {
+        targetFolder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      } catch (err) {}
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        action: 'createFolder',
+        folderId: targetFolder.getId(),
+        folderUrl: targetFolder.getUrl(),
+        folderName: targetFolder.getName()
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ----------------------------------------------------
+    // 2. ACTION: ลบไฟล์ออกจาก Google Drive
+    // ----------------------------------------------------
+    if (action === 'deleteFile' || action === 'delete') {
+      var fileId = data.fileId;
+      if (!fileId && data.fileUrl) {
+        var match = data.fileUrl.match(/\\/file\\/d\\/([a-zA-Z0-9_-]+)/) ||
+                    data.fileUrl.match(/id=([a-zA-Z0-9_-]+)/) ||
+                    data.fileUrl.match(/\\/folders\\/([a-zA-Z0-9_-]+)/);
+        if (match) fileId = match[1];
+      }
+
+      if (fileId) {
+        try {
+          var fileToDelete = DriveApp.getFileById(fileId);
+          fileToDelete.setTrashed(true); // ย้ายลงถังขยะ Google Drive
+          return ContentService.createTextOutput(JSON.stringify({
+            status: 'success',
+            action: 'deleteFile',
+            fileId: fileId,
+            message: 'File trashed successfully'
+          })).setMimeType(ContentService.MimeType.JSON);
+        } catch (err) {
+          return ContentService.createTextOutput(JSON.stringify({
+            status: 'warning',
+            message: 'File not found or already deleted: ' + err.toString()
+          })).setMimeType(ContentService.MimeType.JSON);
+        }
+      }
+    }
+
+    // ----------------------------------------------------
+    // 3. ACTION: ลบโฟลเดอร์ออกจาก Google Drive
+    // ----------------------------------------------------
+    if (action === 'deleteFolder') {
+      var folderId = data.folderId;
+      if (!folderId && data.folderUrl) {
+        var matchFolder = data.folderUrl.match(/\\/folders\\/([a-zA-Z0-9_-]+)/) ||
+                          data.folderUrl.match(/id=([a-zA-Z0-9_-]+)/);
+        if (matchFolder) folderId = matchFolder[1];
+      }
+
+      if (folderId) {
+        try {
+          var folderToDelete = DriveApp.getFolderById(folderId);
+          folderToDelete.setTrashed(true); // ย้ายลงถังขยะ Google Drive
+          return ContentService.createTextOutput(JSON.stringify({
+            status: 'success',
+            action: 'deleteFolder',
+            folderId: folderId,
+            message: 'Folder trashed successfully'
+          })).setMimeType(ContentService.MimeType.JSON);
+        } catch (err) {
+          return ContentService.createTextOutput(JSON.stringify({
+            status: 'warning',
+            message: 'Folder not found or already deleted: ' + err.toString()
+          })).setMimeType(ContentService.MimeType.JSON);
+        }
+      }
+    }
+
+    // ----------------------------------------------------
+    // 4. ACTION: อัปโหลดไฟล์เข้าสู่โฟลเดอร์ Google Drive
+    // ----------------------------------------------------
+    if (data.base64) {
+      var base64Clean = data.base64;
+      if (base64Clean.indexOf(',') > -1) {
+        base64Clean = base64Clean.split(',')[1];
+      }
+      var decoded = Utilities.base64Decode(base64Clean);
+      var blob = Utilities.newBlob(decoded, data.type || 'application/octet-stream', data.name || 'uploaded_file');
+      
+      var targetFolderId = data.folderId || '1oOywsmTzdy1CMJDQuzNk9yJhH0lwWVZu';
+      var folder;
+      try {
+        folder = DriveApp.getFolderById(targetFolderId);
+      } catch (err) {
+        folder = DriveApp.getRootFolder();
+      }
+
+      var uploadedFile = folder.createFile(blob);
+
+      try {
+        uploadedFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      } catch (err) {}
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        action: 'upload',
+        fileId: uploadedFile.getId(),
+        fileUrl: uploadedFile.getUrl(),
+        downloadUrl: 'https://drive.google.com/uc?id=' + uploadedFile.getId() + '&export=download'
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    return ContentService.createTextOutput(JSON.stringify({
+      status: 'error',
+      message: 'Invalid request or missing parameters'
+    })).setMimeType(ContentService.MimeType.JSON);
+
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({
+      status: 'error',
+      message: error.toString()
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function doGet(e) {
+  return ContentService.createTextOutput(JSON.stringify({
+    status: 'online',
+    system: 'Academic Management Google Drive API v2',
+    timestamp: new Date().toISOString()
+  })).setMimeType(ContentService.MimeType.JSON);
+}`;
+
 export interface DriveUploadResult {
   success: boolean;
   fileId?: string;
@@ -32,14 +205,15 @@ export interface CreateFolderResult {
 }
 
 /**
- * Extracts Google Drive File ID from URL or ID string
+ * Extracts Google Drive File ID or Folder ID from URL or raw ID string
  */
 export function extractDriveFileId(urlOrId?: string): string | null {
   if (!urlOrId) return null;
   if (/^[a-zA-Z0-9_-]{25,}$/.test(urlOrId)) return urlOrId;
-  const match = urlOrId.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) ||
-                urlOrId.match(/id=([a-zA-Z0-9_-]+)/) ||
-                urlOrId.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  const match =
+    urlOrId.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) ||
+    urlOrId.match(/id=([a-zA-Z0-9_-]+)/) ||
+    urlOrId.match(/\/folders\/([a-zA-Z0-9_-]+)/);
   return match ? match[1] : null;
 }
 
@@ -62,13 +236,13 @@ export async function createGoogleDriveFolder(
   try {
     const payload = {
       action: 'createFolder',
-      folderName: folderName,
-      name: folderName,
+      folderName: folderName.trim(),
+      name: folderName.trim(),
       parentFolderId: parentFolderId,
     };
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3500);
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
     const response = await fetch(webhookUrl, {
       method: 'POST',
@@ -95,7 +269,7 @@ export async function createGoogleDriveFolder(
       }
     }
   } catch (err) {
-    console.warn('Folder creation fallback used:', err);
+    console.warn('Folder creation GAS call error, using fallback:', err);
   }
 
   return fallbackResult;
@@ -116,7 +290,7 @@ export async function uploadFileToGoogleDrive(
   const fileType = file.type || 'application/octet-stream';
 
   return new Promise((resolve) => {
-    // Fast 2.5s fallback resolution to keep UI reactive
+    // 3.5s timeout fallback resolution to keep UI smooth
     const timer = setTimeout(() => {
       resolve({
         success: true,
@@ -127,7 +301,7 @@ export async function uploadFileToGoogleDrive(
         fileType,
         targetFolderId: resolvedFolderId,
       });
-    }, 2500);
+    }, 3500);
 
     const reader = new FileReader();
 
@@ -229,7 +403,7 @@ export async function deleteGoogleDriveFile(
   webhookUrl: string = GAS_WEBHOOK_URL
 ): Promise<boolean> {
   const fileId = extractDriveFileId(fileIdOrUrl);
-  if (!fileId || fileId.startsWith('drive_') || fileId.startsWith('file-')) {
+  if (!fileId || fileId.startsWith('sample') || fileId.startsWith('doc_')) {
     return true;
   }
 
@@ -237,12 +411,13 @@ export async function deleteGoogleDriveFile(
     const payload = {
       action: 'deleteFile',
       fileId: fileId,
+      fileUrl: fileIdOrUrl,
     };
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
 
-    await fetch(webhookUrl, {
+    const res = await fetch(webhookUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain;charset=utf-8',
@@ -251,7 +426,7 @@ export async function deleteGoogleDriveFile(
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
-    return true;
+    return res.ok;
   } catch (err) {
     console.warn('Google Drive file deletion request error:', err);
     return false;
@@ -274,12 +449,13 @@ export async function deleteGoogleDriveFolder(
     const payload = {
       action: 'deleteFolder',
       folderId: folderId,
+      folderUrl: folderIdOrUrl,
     };
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
 
-    await fetch(webhookUrl, {
+    const res = await fetch(webhookUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain;charset=utf-8',
@@ -288,9 +464,10 @@ export async function deleteGoogleDriveFolder(
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
-    return true;
+    return res.ok;
   } catch (err) {
     console.warn('Google Drive folder deletion request error:', err);
     return false;
   }
 }
+

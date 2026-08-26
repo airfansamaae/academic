@@ -36,7 +36,11 @@ import {
   GDRIVE_FOLDER_URL,
   GDRIVE_FOLDER_ID,
 } from '../services/storage';
-import { uploadFileToGoogleDrive, createGoogleDriveFolder } from '../services/driveUpload';
+import {
+  uploadFileToGoogleDrive,
+  createGoogleDriveFolder,
+  deleteGoogleDriveFile,
+} from '../services/driveUpload';
 import {
   notifySuccess,
   notifyError,
@@ -411,8 +415,12 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
   };
 
   const handleRemoveFile = (fileId: string) => {
+    const fileToRemove = uploadedFiles.find((f) => f.id === fileId);
+    if (fileToRemove?.gDriveUrl) {
+      deleteGoogleDriveFile(fileToRemove.gDriveUrl).catch(() => {});
+    }
     setUploadedFiles((prev) => prev.filter((f) => f.id !== fileId));
-    notifyInfo('ลบไฟล์ออกจากรายการแล้ว');
+    notifyInfo('ลบไฟล์ออกจากรายการและส่งคำสั่งลบออกจาก Google Drive แล้ว');
   };
 
   // --- Member Submit or Update Task ---
