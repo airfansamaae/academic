@@ -19,6 +19,11 @@ import {
   ClipboardCheck,
 } from 'lucide-react';
 import { User, Task, Announcement, Submission, NavigationTab } from '../types';
+import {
+  formatThaiDate,
+  formatThaiDateRange,
+  getDatesInRange,
+} from '../utils/dateHelpers';
 
 interface DashboardProps {
   currentUser: User | null;
@@ -186,19 +191,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     // Announcements -> Always YELLOW
     announcements.forEach((ann) => {
-      if (!map.has(ann.date)) map.set(ann.date, []);
-      map.get(ann.date)!.push({
-        type: 'ANNOUNCEMENT',
-        item: ann,
-        statusColor: 'YELLOW',
-        statusText: 'ประกาศแจ้งเพื่อทราบ',
+      const dates = ann.endDate && ann.endDate >= ann.date
+        ? getDatesInRange(ann.date, ann.endDate)
+        : [ann.date];
+
+      dates.forEach((d) => {
+        if (!map.has(d)) map.set(d, []);
+        map.get(d)!.push({
+          type: 'ANNOUNCEMENT',
+          item: ann,
+          statusColor: 'YELLOW',
+          statusText: 'ประกาศแจ้งเพื่อทราบ',
+        });
       });
     });
 
     // Tasks
     tasks.forEach((task) => {
-      if (!map.has(task.dueDate)) map.set(task.dueDate, []);
-
       let statusColor: 'RED' | 'GREEN' | 'YELLOW' = 'RED';
       let statusText = 'มีงานต้องส่ง';
 
@@ -228,11 +237,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
         }
       }
 
-      map.get(task.dueDate)!.push({
-        type: 'TASK',
-        item: task,
-        statusColor,
-        statusText,
+      const dates = task.startDate && task.startDate <= task.dueDate
+        ? getDatesInRange(task.startDate, task.dueDate)
+        : [task.dueDate];
+
+      dates.forEach((d) => {
+        if (!map.has(d)) map.set(d, []);
+        map.get(d)!.push({
+          type: 'TASK',
+          item: task,
+          statusColor,
+          statusText,
+        });
       });
     });
 
@@ -445,7 +461,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         : 'text-amber-950 bg-amber-100/90 border-amber-300'
                     }`}
                   >
-                    {formatThaiDate(activeAlert.date, true)}
+                    {activeAlert.category === 'TASK'
+                      ? formatThaiDateRange(
+                          (activeAlert.item as Task).startDate || (activeAlert.item as Task).dueDate,
+                          (activeAlert.item as Task).dueDate,
+                          true
+                        )
+                      : formatThaiDateRange(
+                          (activeAlert.item as Announcement).date,
+                          (activeAlert.item as Announcement).endDate || (activeAlert.item as Announcement).date,
+                          true
+                        )}
                     {activeAlert.diffDays === 0
                       ? ' (วันนี้!)'
                       : activeAlert.diffDays === 1
@@ -1080,8 +1106,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 >
                   {selectedCalendarItem.statusText}
                 </span>
-                <p className="text-xs text-slate-500 mt-1">
-                  วันที่: {formatThaiDate(selectedCalendarItem.date)}
+                <p className="text-xs text-slate-500 mt-1 font-mono">
+                  วันที่: {selectedCalendarItem.type === 'TASK'
+                    ? formatThaiDateRange(
+                        (selectedCalendarItem.item as Task).startDate || (selectedCalendarItem.item as Task).dueDate,
+                        (selectedCalendarItem.item as Task).dueDate,
+                        true
+                      )
+                    : formatThaiDateRange(
+                        (selectedCalendarItem.item as Announcement).date,
+                        (selectedCalendarItem.item as Announcement).endDate || (selectedCalendarItem.item as Announcement).date,
+                        true
+                      )}
                 </p>
               </div>
             </div>

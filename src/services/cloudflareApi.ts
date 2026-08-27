@@ -72,6 +72,11 @@ export class CloudflareApiService {
    */
   public static async syncTask(task: Task): Promise<boolean> {
     try {
+      const deadline =
+        task.startDate && task.startDate !== task.dueDate
+          ? `${task.startDate}..${task.dueDate}`
+          : task.dueDate || '';
+
       const response = await this.fetchWithTimeout(`${this.workerUrl}/api/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -80,7 +85,8 @@ export class CloudflareApiService {
           title: task.title,
           type: task.category || 'งานวิชาการ',
           description: task.description || '',
-          deadline: task.dueDate || '',
+          deadline,
+          startDate: task.startDate || '',
           status: 'ACTIVE',
           assigneeIds: [],
           gDriveFolderId: task.gDriveFolderId || '',
@@ -327,6 +333,11 @@ export class CloudflareApiService {
    */
   public static async syncAnnouncement(ann: Announcement): Promise<boolean> {
     try {
+      const deadline =
+        ann.endDate && ann.endDate !== ann.date
+          ? `${ann.date}..${ann.endDate}`
+          : ann.date || '';
+
       // Store in tasks table with type 'ANNOUNCEMENT' for full persistence
       const response = await this.fetchWithTimeout(`${this.workerUrl}/api/tasks`, {
         method: 'POST',
@@ -336,7 +347,9 @@ export class CloudflareApiService {
           title: ann.title,
           type: 'ANNOUNCEMENT',
           description: ann.details || '',
-          deadline: ann.date || '',
+          deadline,
+          startDate: ann.date || '',
+          endDate: ann.endDate || '',
           status: 'ACTIVE',
           assigneeIds: [],
           gDriveFolderId: ann.type || 'ACTIVITY',

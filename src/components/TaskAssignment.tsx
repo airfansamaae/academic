@@ -49,6 +49,12 @@ import {
   confirmDialog,
 } from '../services/notifications';
 import { ThaiDatePicker } from './ThaiDatePicker';
+import {
+  formatThaiDate,
+  formatThaiDateRange,
+  isRangePastDue,
+  getDatesInRange,
+} from '../utils/dateHelpers';
 
 interface TaskAssignmentProps {
   currentUser: User | null;
@@ -101,6 +107,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     d.setDate(d.getDate() + 7);
     return d.toISOString().split('T')[0];
   });
+  const [modalEndDate, setModalEndDate] = useState<string>('');
   const [modalAnnType, setModalAnnType] = useState<AnnouncementType>('ACTIVITY');
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -235,8 +242,16 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     setModalTitle('');
     setModalDescription('');
     const d = new Date();
-    d.setDate(d.getDate() + 7);
-    setModalDate(d.toISOString().split('T')[0]);
+    const todayStr = d.toISOString().split('T')[0];
+    if (category === 'TASK') {
+      d.setDate(d.getDate() + 7);
+      const endStr = d.toISOString().split('T')[0];
+      setModalDate(todayStr);
+      setModalEndDate(endStr);
+    } else {
+      setModalDate(todayStr);
+      setModalEndDate(todayStr);
+    }
     setModalAnnType('ACTIVITY');
     setIsModalOpen(true);
   };
@@ -247,7 +262,8 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     setModalCategory('TASK');
     setModalTitle(task.title);
     setModalDescription(task.description || '');
-    setModalDate(task.dueDate);
+    setModalDate(task.startDate || task.dueDate);
+    setModalEndDate(task.dueDate);
     setIsModalOpen(true);
   };
 
@@ -258,6 +274,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     setModalTitle(ann.title);
     setModalDescription(ann.details || '');
     setModalDate(ann.date);
+    setModalEndDate(ann.endDate || ann.date);
     setModalAnnType(ann.type);
     setIsModalOpen(true);
   };
@@ -272,7 +289,8 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
 
     const title = modalTitle.trim();
     const desc = modalDescription.trim();
-    const dueDate = modalDate;
+    const startDate = modalDate;
+    const endDate = modalEndDate && modalEndDate >= modalDate ? modalEndDate : modalDate;
     const assignedBy = currentUser?.fullName || 'ผู้ดูแลระบบวิชาการ';
 
     try {
@@ -285,7 +303,8 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
               title,
               category: 'งานวิชาการ',
               description: desc,
-              dueDate,
+              startDate: startDate !== endDate ? startDate : undefined,
+              dueDate: endDate,
             });
             notifySuccess('บันทึกการแก้ไขสำเร็จ');
           }
@@ -295,7 +314,8 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
             title,
             category: 'งานวิชาการ',
             description: desc,
-            dueDate,
+            startDate: startDate !== endDate ? startDate : undefined,
+            dueDate: endDate,
             assignedBy,
           });
 
@@ -322,7 +342,8 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
               ...existing,
               title,
               details: desc,
-              date: dueDate,
+              date: startDate,
+              endDate: startDate !== endDate ? endDate : undefined,
               type: modalAnnType,
             });
             notifySuccess('บันทึกการแก้ไขสำเร็จ');
@@ -331,7 +352,8 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
           StorageService.createAnnouncement({
             title,
             details: desc,
-            date: dueDate,
+            date: startDate,
+            endDate: startDate !== endDate ? endDate : undefined,
             type: modalAnnType,
             createdBy: assignedBy,
           });
@@ -678,7 +700,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                             </div>
                             <div className="flex items-center space-x-1 text-xs font-mono font-bold text-slate-700 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
                               <Calendar className="w-3.5 h-3.5 text-purple-600" />
-                              <span>{formatThaiDate(task.dueDate)}</span>
+                              <span>{formatThaiDateRange(task.startDate || task.dueDate, task.dueDate)}</span>
                             </div>
                           </div>
 
@@ -761,7 +783,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                               </p>
                             </td>
                             <td className="py-3.5 px-3 whitespace-nowrap font-mono font-semibold text-slate-800">
-                              {formatThaiDate(task.dueDate)}
+                              {formatThaiDateRange(task.startDate || task.dueDate, task.dueDate)}
                             </td>
                             <td className="py-3.5 px-3 whitespace-nowrap">
                               {task.gDriveFolderUrl ? (
@@ -850,7 +872,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                               : '📢 ข่าวสารทั่วไป'}
                           </span>
                           <span className="text-xs font-mono font-bold text-amber-900">
-                            {formatThaiDate(ann.date)}
+                            {formatThaiDateRange(ann.date, ann.endDate || ann.date)}
                           </span>
                         </div>
                         <p className="text-sm font-bold text-slate-900 line-clamp-1">{ann.title}</p>
@@ -905,7 +927,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                             <span className="ml-2 font-bold text-slate-800">{ann.title}</span>
                           </td>
                           <td className="py-3.5 px-3 whitespace-nowrap font-mono font-semibold text-slate-700">
-                            {formatThaiDate(ann.date)}
+                            {formatThaiDateRange(ann.date, ann.endDate || ann.date)}
                           </td>
                           <td className="py-3.5 px-3 text-slate-600 max-w-xs truncate">
                             {ann.details || '-'}
@@ -1089,11 +1111,20 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                   <div className="space-y-1.5">
                     <ThaiDatePicker
                       value={modalDate}
-                      onChange={(val) => setModalDate(val)}
+                      endDate={modalEndDate}
+                      onChange={(val) => {
+                        setModalDate(val);
+                        setModalEndDate(val);
+                      }}
+                      onChangeRange={(start, end) => {
+                        setModalDate(start);
+                        setModalEndDate(end);
+                      }}
+                      allowRange={true}
                       label={`4. ${
                         modalCategory === 'TASK'
-                          ? 'กำหนดวันส่งงาน (dd/mm/yyyy)'
-                          : 'วันที่เกิดกิจกรรม / วันประกาศ (dd/mm/yyyy)'
+                          ? 'กำหนดวันส่งงาน / กำหนดส่งแบบช่วงวันที่ (dd/mm/yyyy)'
+                          : 'วันที่เกิดกิจกรรม / ช่วงเวลาจัดกิจกรรม (dd/mm/yyyy)'
                       }`}
                       required
                       colorScheme={modalCategory === 'TASK' ? 'purple' : 'amber'}
@@ -1268,7 +1299,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
 
                           <div className="flex items-center space-x-1 text-xs font-mono font-bold text-slate-700 bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs">
                             <Calendar className="w-3.5 h-3.5 text-purple-600" />
-                            <span>{formatThaiDate(task.dueDate)}</span>
+                            <span>{formatThaiDateRange(task.startDate || task.dueDate, task.dueDate)}</span>
                           </div>
                         </div>
 
@@ -1338,7 +1369,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                             </p>
                           </td>
                           <td className="py-3.5 px-3 whitespace-nowrap font-mono font-semibold text-purple-900">
-                            {formatThaiDate(task.dueDate)}
+                            {formatThaiDateRange(task.startDate || task.dueDate, task.dueDate)}
                           </td>
                           <td className="py-3.5 px-3 whitespace-nowrap text-slate-600">
                             {task.assignedBy || 'ผู้ดูแลระบบ'}
@@ -1401,7 +1432,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                           </span>
                           <div className="flex items-center space-x-1 text-xs font-mono font-bold text-emerald-800 bg-white px-2.5 py-1 rounded-lg border border-emerald-200">
                             <Calendar className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>{formatThaiDate(task.dueDate)}</span>
+                            <span>{formatThaiDateRange(task.startDate || task.dueDate, task.dueDate)}</span>
                           </div>
                         </div>
 
@@ -1508,7 +1539,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                             {task.title}
                           </td>
                           <td className="py-3.5 px-3 whitespace-nowrap font-mono font-semibold text-emerald-900">
-                            {formatThaiDate(task.dueDate)}
+                            {formatThaiDateRange(task.startDate || task.dueDate, task.dueDate)}
                           </td>
                           <td className="py-3.5 px-3 whitespace-nowrap">
                             <span className="text-xs font-semibold text-emerald-800 bg-white px-2.5 py-1 rounded-lg border border-emerald-200 inline-flex items-center space-x-1">
@@ -1569,7 +1600,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                     </h2>
                     <div className="flex flex-wrap items-center gap-2 text-xs mt-1">
                       <span className="text-slate-500">
-                        กำหนดส่ง: <strong className="font-mono text-slate-800">{formatThaiDate(activeTaskForSubmission.dueDate, true)}</strong>
+                        กำหนดส่ง: <strong className="font-mono text-slate-800">{formatThaiDateRange(activeTaskForSubmission.startDate || activeTaskForSubmission.dueDate, activeTaskForSubmission.dueDate, true)}</strong>
                       </span>
                       {editingSubmission && (
                         <span className="text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-md font-bold text-[11px]">

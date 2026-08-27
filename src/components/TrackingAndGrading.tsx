@@ -45,6 +45,10 @@ import {
   notifyError,
   confirmDialog,
 } from '../services/notifications';
+import {
+  formatThaiDate,
+  formatThaiDateRange,
+} from '../utils/dateHelpers';
 
 interface TrackingAndGradingProps {
   currentUser: User | null;
@@ -642,7 +646,7 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
                       <div className="flex items-center space-x-3 text-xs text-slate-500 mt-0.5">
                         <span className="flex items-center space-x-1 font-mono">
                           <Calendar className="w-3.5 h-3.5 text-purple-600" />
-                          <span>กำหนดส่ง: {formatThaiDate(task.dueDate)}</span>
+                          <span>กำหนดส่ง: {formatThaiDateRange(task.startDate || task.dueDate, task.dueDate)}</span>
                         </span>
                         <span>•</span>
                         <span>มอบหมายโดย: {task.assignedBy}</span>

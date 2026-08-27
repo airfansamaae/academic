@@ -1362,18 +1362,32 @@ export class StorageService {
             !t.id.startsWith('ann-')
         );
 
-        const mappedTasks: Task[] = nonDeletedCloudTasks.map((t: any) => ({
-          id: t.id,
-          title: t.title || '',
-          description: t.description || '',
-          category: t.type || t.category || 'งานวิชาการ',
-          dueDate: t.deadline || t.dueDate || '',
-          assignedBy: t.assignedBy || 'Admin วิชาการ',
-          gDriveFolderId: t.gDriveFolderId || GDRIVE_FOLDER_ID,
-          gDriveFolderUrl: t.gDriveFolderUrl || `https://drive.google.com/drive/folders/${t.gDriveFolderId || GDRIVE_FOLDER_ID}`,
-          createdAt: t.createdAt || getNowISO(),
-          updatedAt: t.updatedAt || t.createdAt || getNowISO(),
-        }));
+        const mappedTasks: Task[] = nonDeletedCloudTasks.map((t: any) => {
+          let rawDate = t.deadline || t.dueDate || '';
+          let startDate = t.startDate || undefined;
+          let dueDate = rawDate;
+          if (rawDate.includes('..')) {
+            const parts = rawDate.split('..');
+            startDate = parts[0];
+            dueDate = parts[1];
+          } else if (!startDate && t.startDate) {
+            startDate = t.startDate;
+          }
+
+          return {
+            id: t.id,
+            title: t.title || '',
+            description: t.description || '',
+            category: t.type || t.category || 'งานวิชาการ',
+            dueDate: dueDate || '',
+            startDate: startDate || undefined,
+            assignedBy: t.assignedBy || 'Admin วิชาการ',
+            gDriveFolderId: t.gDriveFolderId || GDRIVE_FOLDER_ID,
+            gDriveFolderUrl: t.gDriveFolderUrl || `https://drive.google.com/drive/folders/${t.gDriveFolderId || GDRIVE_FOLDER_ID}`,
+            createdAt: t.createdAt || getNowISO(),
+            updatedAt: t.updatedAt || t.createdAt || getNowISO(),
+          };
+        });
 
         const cloudTaskIdSet = new Set(mappedTasks.map((t) => t.id));
 
@@ -1527,11 +1541,21 @@ export class StorageService {
         const annType = (['ANNOUNCEMENT', 'HOLIDAY', 'ACTIVITY'].includes(rawType) ? rawType : 'ACTIVITY') as AnnouncementType;
         const createdBy = a.createdBy || (a.type === 'ANNOUNCEMENT' ? a.gDriveFolderUrl : '') || 'ผู้ดูแลระบบวิชาการ';
 
+        let rawDate = a.date || a.deadline || getNowISO().split('T')[0];
+        let startDate = rawDate;
+        let endDate = a.endDate || undefined;
+        if (rawDate.includes('..')) {
+          const parts = rawDate.split('..');
+          startDate = parts[0];
+          endDate = parts[1];
+        }
+
         mappedAnnsMap.set(a.id, {
           id: a.id,
           title: a.title || 'ประกาศแจ้งเพื่อทราบ',
           details: a.details || a.description || '',
-          date: a.date || a.deadline || getNowISO().split('T')[0],
+          date: startDate,
+          endDate: endDate || undefined,
           type: annType,
           createdBy: createdBy,
           createdAt: a.createdAt || getNowISO(),

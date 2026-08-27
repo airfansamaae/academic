@@ -19,7 +19,8 @@ export interface Task {
   title: string;
   description: string;
   category: string;
-  dueDate: string; // YYYY-MM-DD
+  dueDate: string; // YYYY-MM-DD (or End Date for range)
+  startDate?: string; // Optional Start Date for date range (YYYY-MM-DD)
   assignedBy: string;
   gDriveFolderId: string;
   gDriveFolderUrl?: string;
@@ -33,7 +34,8 @@ export interface Announcement {
   id: string;
   title: string;
   details: string;
-  date: string; // YYYY-MM-DD
+  date: string; // YYYY-MM-DD (Start Date or Single Date)
+  endDate?: string; // Optional End Date for date range (YYYY-MM-DD)
   type: AnnouncementType;
   createdBy: string;
   createdAt: string;
