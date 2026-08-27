@@ -14,6 +14,7 @@ import {
   deleteGoogleDriveFile,
   deleteGoogleDriveFolder,
   isProtectedRootFolder,
+  restoreProtectedGoogleDriveRootFolders,
   GDRIVE_FOLDER_ID,
   GDRIVE_FOLDER_URL,
   GDRIVE_OFFICIAL_ORDERS_FOLDER_ID,
@@ -1229,6 +1230,9 @@ export class StorageService {
     this.isSyncing = true;
 
     try {
+      // Non-blocking auto-restore for protected Google Drive root folders
+      restoreProtectedGoogleDriveRootFolders().catch(() => {});
+
       const data = await CloudflareApiService.fetchAllData();
       if (!data) return { hasChanges: false, newTasks: [], newSubmissions: [] };
 

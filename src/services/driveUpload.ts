@@ -27,7 +27,9 @@ export function isProtectedRootFolder(folderIdOrUrl?: string): boolean {
   const id = extractDriveFileId(folderIdOrUrl);
   if (!id) return false;
   if (PROTECTED_ROOT_FOLDER_IDS.has(id)) return true;
-  if (id === GDRIVE_FOLDER_ID) return true;
+  if (id === GDRIVE_FOLDER_ID || id === '1oOywsmTzdy1CMJDQuzNk9yJhH0lwWVZu') return true;
+  if (id === GDRIVE_OFFICIAL_ORDERS_FOLDER_ID || id === '1hHTRwn9UpW43xgOUp8O4Yvn8AvioOey8') return true;
+  if (id === GDRIVE_SAMPLE_DOCS_FOLDER_ID || id === '1zFyOcMUxFzFxDXS0C_x41sA6Sy1E2eZS') return true;
   try {
     const raw = localStorage.getItem('academic_settings');
     if (raw) {
@@ -47,11 +49,32 @@ export const GOOGLE_APPS_SCRIPT_CODE = `/**
  * 2. อัปโหลดไฟล์ตรงเข้าโฟลเดอร์เป้าหมาย (upload)
  * 3. ลบไฟล์ออกจาก Google Drive อัตโนมัติ (deleteFile)
  * 4. ลบโฟลเดอร์ออกจาก Google Drive อัตโนมัติ (deleteFolder)
- * 5. ตรวจสอบสถานะการเชื่อมต่อ (doGet)
+ * 5. กู้คืนโฟลเดอร์หลักออกจากถังขยะอัตโนมัติ (restoreRootFolders)
+ * 6. ตรวจสอบสถานะการเชื่อมต่อ (doGet)
  */
+
+var PROTECTED_ROOT_IDS = [
+  '1oOywsmTzdy1CMJDQuzNk9yJhH0lwWVZu', // โฟลเดอร์หลัก "วิชาการ Z"
+  '1hHTRwn9UpW43xgOUp8O4Yvn8AvioOey8', // โฟลเดอร์หนังสือคำสั่ง
+  '1zFyOcMUxFzFxDXS0C_x41sA6Sy1E2eZS'  // โฟลเดอร์เอกสารตัวอย่าง
+];
+
+function ensureRootFoldersRestored() {
+  for (var i = 0; i < PROTECTED_ROOT_IDS.length; i++) {
+    try {
+      var folder = DriveApp.getFolderById(PROTECTED_ROOT_IDS[i]);
+      if (folder && folder.isTrashed()) {
+        folder.setTrashed(false); // กู้คืนจากถังขยะกลับสู่ "ไดรฟ์ของฉัน" ทันที
+      }
+    } catch (e) {}
+  }
+}
 
 function doPost(e) {
   try {
+    // กู้คืนและตรวจสอบโฟลเดอร์หลักทุกครั้งที่มีการเรียกใช้งาน
+    ensureRootFoldersRestored();
+
     if (!e || !e.postData || !e.postData.contents) {
       return ContentService.createTextOutput(JSON.stringify({
         status: 'error',
@@ -63,6 +86,18 @@ function doPost(e) {
     var action = data.action || (data.base64 ? 'upload' : '');
 
     // ----------------------------------------------------
+    // 0. ACTION: กู้คืนโฟลเดอร์หลักกลับสู่ไดรฟ์ของฉัน
+    // ----------------------------------------------------
+    if (action === 'restoreRootFolders' || action === 'untrash') {
+      ensureRootFoldersRestored();
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        action: 'restoreRootFolders',
+        message: 'Protected root folders restored to My Drive successfully'
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ----------------------------------------------------
     // 1. ACTION: สร้างโฟลเดอร์ตามหัวข้องานมอบหมาย
     // ----------------------------------------------------
     if (action === 'createFolder') {
@@ -71,6 +106,9 @@ function doPost(e) {
       var parentFolder;
       try {
         parentFolder = DriveApp.getFolderById(parentId);
+        if (parentFolder.isTrashed()) {
+          parentFolder.setTrashed(false);
+        }
       } catch (err) {
         parentFolder = DriveApp.getRootFolder();
       }
@@ -104,13 +142,22 @@ function doPost(e) {
     if (action === 'deleteFile' || action === 'delete') {
       var fileId = data.fileId;
       if (!fileId && data.fileUrl) {
-        var match = data.fileUrl.match(/\\/file\\/d\\/([a-zA-Z0-9_-]+)/) ||
+        var match = data.fileUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) ||
                     data.fileUrl.match(/id=([a-zA-Z0-9_-]+)/) ||
-                    data.fileUrl.match(/\\/folders\\/([a-zA-Z0-9_-]+)/);
+                    data.fileUrl.match(/\/folders\/([a-zA-Z0-9_-]+)/);
         if (match) fileId = match[1];
       }
 
       if (fileId && fileId.length >= 20) {
+        // ป้องกันไม่ให้ลบโฟลเดอร์หลัก
+        if (PROTECTED_ROOT_IDS.indexOf(fileId) > -1) {
+          ensureRootFoldersRestored();
+          return ContentService.createTextOutput(JSON.stringify({
+            status: 'warning',
+            message: 'Protected root folder cannot be deleted'
+          })).setMimeType(ContentService.MimeType.JSON);
+        }
+
         try {
           var fileToDelete = DriveApp.getFileById(fileId);
           fileToDelete.setTrashed(true); // ย้ายลงถังขยะ Google Drive
@@ -139,24 +186,18 @@ function doPost(e) {
     if (action === 'deleteFolder') {
       var folderId = data.folderId;
       if (!folderId && data.folderUrl) {
-        var matchFolder = data.folderUrl.match(/\\/folders\\/([a-zA-Z0-9_-]+)/) ||
+        var matchFolder = data.folderUrl.match(/\/folders\/([a-zA-Z0-9_-]+)/) ||
                           data.folderUrl.match(/id=([a-zA-Z0-9_-]+)/);
         if (matchFolder) folderId = matchFolder[1];
       }
 
-      // ระบบความปลอดภัย: ห้ามลบโฟลเดอร์หลักของระบบเด็ดขาด
-      var protectedRootList = [
-        '1oOywsmTzdy1CMJDQuzNk9yJhH0lwWVZu',
-        '1hHTRwn9UpW43xgOUp8O4Yvn8AvioOey8',
-        '1zFyOcMUxFzFxDXS0C_x41sA6Sy1E2eZS'
-      ];
-      if (data.parentFolderId) protectedRootList.push(data.parentFolderId);
-
       if (folderId && folderId.length >= 20) {
-        if (protectedRootList.indexOf(folderId) > -1) {
+        // ระบบความปลอดภัยสูงสุด: ห้ามลบโฟลเดอร์หลักของระบบเด็ดขาด หากได้รับคำสั่งจะทำการกู้คืนทันที
+        if (PROTECTED_ROOT_IDS.indexOf(folderId) > -1) {
+          ensureRootFoldersRestored();
           return ContentService.createTextOutput(JSON.stringify({
             status: 'warning',
-            message: 'Protected root folder cannot be deleted'
+            message: 'Protected root folder cannot be deleted and has been preserved in My Drive'
           })).setMimeType(ContentService.MimeType.JSON);
         }
 
@@ -197,6 +238,9 @@ function doPost(e) {
       var folder;
       try {
         folder = DriveApp.getFolderById(targetFolderId);
+        if (folder.isTrashed()) {
+          folder.setTrashed(false);
+        }
       } catch (err) {
         folder = DriveApp.getRootFolder();
       }
@@ -230,11 +274,12 @@ function doPost(e) {
 }
 
 function doGet(e) {
+  ensureRootFoldersRestored();
   return ContentService.createTextOutput(JSON.stringify({
     status: 'online',
     system: 'Academic Management Google Drive API v2',
     version: '2.0',
-    capabilities: ['createFolder', 'deleteFile', 'deleteFolder', 'upload'],
+    capabilities: ['createFolder', 'deleteFile', 'deleteFolder', 'restoreRootFolders', 'upload'],
     timestamp: new Date().toISOString()
   })).setMimeType(ContentService.MimeType.JSON);
 }`;
@@ -579,6 +624,40 @@ export async function deleteGoogleDriveFolder(
     return false;
   } catch (err) {
     console.warn('Google Drive folder deletion request error:', err);
+    return false;
+  }
+}
+
+/**
+ * Automatically restores protected root folders ("วิชาการ Z", "หนังสือคำสั่ง", "เอกสารตัวอย่าง")
+ * from trash back to "My Drive" (ไดรฟ์ของฉัน)
+ */
+export async function restoreProtectedGoogleDriveRootFolders(webhookUrl?: string): Promise<boolean> {
+  const activeWebhook = webhookUrl || getActiveGasWebhookUrl();
+  try {
+    const payload = {
+      action: 'restoreRootFolders',
+      rootFolderIds: Array.from(PROTECTED_ROOT_FOLDER_IDS),
+    };
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+    const res = await fetch(activeWebhook, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (res.ok) {
+      const data = await res.json().catch(() => null);
+      return data?.status === 'success' || res.ok;
+    }
+    return false;
+  } catch (err) {
     return false;
   }
 }
