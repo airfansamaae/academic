@@ -193,28 +193,7 @@ const INITIAL_TASKS: Task[] = [
   },
 ];
 
-const INITIAL_ANNOUNCEMENTS: Announcement[] = [
-  {
-    id: 'ann-01',
-    title: '📢 แจ้งกำหนดการประชุมวิชาการสัญจรและอบรมเชิงปฏิบัติการ AI ทางการศึกษา',
-    details: 'ขอเชิญครูทุกท่านเข้าร่วมการประชุม ณ ห้องประชุมเกียรติยศ เวลา 09.00 - 16.00 น. มีอาหารว่างและเกียรติบัตร',
-    date: getRelativeDate(0), // Today
-    type: 'ACTIVITY',
-    createdBy: 'ผู้ดูแลระบบวิชาการ',
-    createdAt: '2026-08-20T08:00:00.000Z',
-    updatedAt: '2026-08-20T08:00:00.000Z',
-  },
-  {
-    id: 'ann-02',
-    title: '🏖️ ประกาศวันหยุดราชการพิเศษและการจัดสอนชดเชย',
-    details: 'หยุดเรียนเนื่องในวันสำคัญทางวิชาการและวัฒนธรรม ครูผู้สอนสามารถนัดหมายการเรียนการสอนออนไลน์ล่วงหน้าได้',
-    date: getRelativeDate(5),
-    type: 'HOLIDAY',
-    createdBy: 'ผู้ดูแลระบบวิชาการ',
-    createdAt: '2026-08-18T09:30:00.000Z',
-    updatedAt: '2026-08-18T09:30:00.000Z',
-  },
-];
+const INITIAL_ANNOUNCEMENTS: Announcement[] = [];
 
 const INITIAL_SUBMISSIONS: Submission[] = [
   {
@@ -755,9 +734,13 @@ export class StorageService {
   static getDeletedAnnIds(): Set<string> {
     try {
       const raw = localStorage.getItem(STORAGE_KEYS.DELETED_ANNOUNCEMENTS);
-      return new Set(raw ? JSON.parse(raw) : []);
+      const set: Set<string> = new Set(raw ? JSON.parse(raw) : []);
+      // Permanently blacklist legacy sample announcement IDs
+      set.add('ann-01');
+      set.add('ann-02');
+      return set;
     } catch {
-      return new Set();
+      return new Set(['ann-01', 'ann-02']);
     }
   }
 
@@ -891,7 +874,16 @@ export class StorageService {
       }
     }
     const deletedAnnIds = this.getDeletedAnnIds();
-    return anns.filter((a) => a && a.id && !deletedAnnIds.has(a.id));
+    return anns.filter(
+      (a) =>
+        a &&
+        a.id &&
+        !deletedAnnIds.has(a.id) &&
+        a.id !== 'ann-01' &&
+        a.id !== 'ann-02' &&
+        !a.title?.includes('ประกาศวันหยุดราชการพิเศษ') &&
+        !a.title?.includes('ประชุมวิชาการสัญจร')
+    );
   }
 
   static saveAnnouncements(announcements: Announcement[]): void {
@@ -1492,11 +1484,40 @@ export class StorageService {
         ...(Array.isArray(data.tasks) ? data.tasks.filter((t: any) => t.type === 'ANNOUNCEMENT' || (t.id && t.id.startsWith('ann-'))) : []),
       ];
 
+      // Mark tombstones for any deleted announcements on the server
+      rawAnnList.forEach((a: any) => {
+        if (
+          !a ||
+          !a.id ||
+          a.status === 'DELETED' ||
+          a._deleted === true ||
+          a.type === 'DELETED' ||
+          a.title === '[DELETED]' ||
+          a.id === 'ann-01' ||
+          a.id === 'ann-02' ||
+          (a.title && (a.title.includes('ประกาศวันหยุดราชการพิเศษ') || a.title.includes('ประชุมวิชาการสัญจร')))
+        ) {
+          if (a && a.id) {
+            this.addDeletedAnnId(a.id);
+          }
+        }
+      });
+
       const deletedAnnIds = this.getDeletedAnnIds();
       const currentAnns = this.getAnnouncements();
 
       const nonDeletedCloudAnns = rawAnnList.filter(
-        (a: any) => a && a.id && !deletedAnnIds.has(a.id) && a.status !== 'DELETED' && a._deleted !== true
+        (a: any) =>
+          a &&
+          a.id &&
+          !deletedAnnIds.has(a.id) &&
+          a.status !== 'DELETED' &&
+          a.type !== 'DELETED' &&
+          a.title !== '[DELETED]' &&
+          a._deleted !== true &&
+          a.id !== 'ann-01' &&
+          a.id !== 'ann-02' &&
+          !(a.title && (a.title.includes('ประกาศวันหยุดราชการพิเศษ') || a.title.includes('ประชุมวิชาการสัญจร')))
       );
 
       const mappedAnnsMap = new Map<string, Announcement>();
@@ -1518,16 +1539,25 @@ export class StorageService {
         });
       });
 
-      // Preserve local announcements and upload to cloud if not yet synced
+      // Server is source of truth: If a local announcement was deleted on the server, mark as deleted
+      const now = Date.now();
       currentAnns.forEach((localAnn) => {
-        if (!deletedAnnIds.has(localAnn.id) && !mappedAnnsMap.has(localAnn.id)) {
-          mappedAnnsMap.set(localAnn.id, localAnn);
-          // Auto sync to cloud in background
-          CloudflareApiService.syncAnnouncement(localAnn).catch(() => {});
+        if (!mappedAnnsMap.has(localAnn.id)) {
+          const annAgeMs = now - new Date(localAnn.createdAt || 0).getTime();
+          if (annAgeMs > 15000 || isNaN(annAgeMs)) {
+            // Deleted on server (Admin deleted) -> purge from member device
+            this.addDeletedAnnId(localAnn.id);
+            hasChanges = true;
+          } else if (!deletedAnnIds.has(localAnn.id)) {
+            // Recently created locally (<15s) -> sync up to cloud
+            mappedAnnsMap.set(localAnn.id, localAnn);
+            CloudflareApiService.syncAnnouncement(localAnn).catch(() => {});
+          }
         }
       });
 
-      const finalAnns = Array.from(mappedAnnsMap.values()).filter((a) => !deletedAnnIds.has(a.id));
+      const freshDeletedAnnIds = this.getDeletedAnnIds();
+      const finalAnns = Array.from(mappedAnnsMap.values()).filter((a) => !freshDeletedAnnIds.has(a.id));
 
       if (finalAnns.length !== currentAnns.length || hasChanges) {
         localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(finalAnns));
