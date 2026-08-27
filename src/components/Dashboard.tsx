@@ -271,7 +271,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return list;
   }, [tasks, activeMembers, submissions, isAdmin]);
 
-  // Calculate upcoming 7-day alerts (Announcements + Tasks with due date in [0..7] days)
+  // Calculate upcoming alerts (Announcements + Tasks with due dates)
   const upcomingAlerts = useMemo(() => {
     const list: Array<{
       id: string;
@@ -282,22 +282,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
       diffDays: number;
       item: Task | Announcement;
       theme: 'RED' | 'YELLOW';
+      isSubmitted?: boolean;
     }> = [];
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // 1. Announcements within 0 to 7 days
+    // 1. Announcements: Active announcements (from past 14 days up to 60 days ahead)
     announcements.forEach((ann) => {
       if (!ann.date) return;
-      const [y, m, d] = ann.date.split('-').map(Number);
+      const parts = ann.date.split('-').map(Number);
+      if (parts.length < 3) return;
+      const [y, m, d] = parts;
       const annDate = new Date(y, m - 1, d);
       annDate.setHours(0, 0, 0, 0);
       const diffTime = annDate.getTime() - today.getTime();
       const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
-      // Auto-hide if past (diffDays < 0), only show 0..7 days
-      if (diffDays >= 0 && diffDays <= 7) {
+      // Show announcements if active within recent 14 days or upcoming 60 days
+      if (diffDays >= -14 && diffDays <= 60) {
         list.push({
           id: `ann-${ann.id}`,
           category: 'ANNOUNCEMENT',
@@ -311,17 +314,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
       }
     });
 
-    // 2. Tasks with due date within 0 to 7 days
+    // 2. Tasks with due dates (from past 7 days up to 30 days ahead, or any unsubmitted tasks)
     tasks.forEach((task) => {
       if (!task.dueDate) return;
-      const [y, m, d] = task.dueDate.split('-').map(Number);
+      const parts = task.dueDate.split('-').map(Number);
+      if (parts.length < 3) return;
+      const [y, m, d] = parts;
       const taskDate = new Date(y, m - 1, d);
       taskDate.setHours(0, 0, 0, 0);
       const diffTime = taskDate.getTime() - today.getTime();
       const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
-      // Auto-hide if past (diffDays < 0), only show 0..7 days
-      if (diffDays >= 0 && diffDays <= 7) {
+      const isSubmitted = !isAdmin && currentUser ? hasMemberSubmitted(task.id, currentUser.id) : false;
+
+      // Show tasks if due within 30 days, or overdue, or pending
+      if (diffDays >= -14 && diffDays <= 30) {
         list.push({
           id: `task-${task.id}`,
           category: 'TASK',
@@ -330,19 +337,28 @@ export const Dashboard: React.FC<DashboardProps> = ({
           date: task.dueDate,
           diffDays,
           item: task,
-          theme: 'RED',
+          theme: isSubmitted ? 'YELLOW' : 'RED',
+          isSubmitted,
         });
       }
     });
 
-    // Sort by diffDays ascending (closest first)
+    // Sort:
+    // 1. Items closest to today (Math.abs(diffDays))
+    // 2. Tasks that need action (RED) before announcements (YELLOW)
     list.sort((a, b) => {
-      if (a.diffDays !== b.diffDays) return a.diffDays - b.diffDays;
+      const aUrgent = a.diffDays >= 0 && a.diffDays <= 3 && a.theme === 'RED' ? 0 : 1;
+      const bUrgent = b.diffDays >= 0 && b.diffDays <= 3 && b.theme === 'RED' ? 0 : 1;
+      if (aUrgent !== bUrgent) return aUrgent - bUrgent;
+
+      if (Math.abs(a.diffDays) !== Math.abs(b.diffDays)) {
+        return Math.abs(a.diffDays) - Math.abs(b.diffDays);
+      }
       return a.category === 'TASK' ? -1 : 1;
     });
 
     return list;
-  }, [announcements, tasks]);
+  }, [announcements, tasks, isAdmin, currentUser, submissions]);
 
   const [currentAlertIndex, setCurrentAlertIndex] = useState(0);
 
@@ -408,16 +424,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     className={`text-xs font-bold uppercase tracking-wider px-3 py-0.5 rounded-lg border shadow-2xs ${
                       activeAlert.theme === 'RED'
                         ? 'bg-rose-600 text-white border-rose-700'
+                        : activeAlert.isSubmitted
+                        ? 'bg-emerald-600 text-white border-emerald-700'
                         : 'bg-amber-500 text-white border-amber-600'
                     }`}
                   >
-                    {activeAlert.category === 'TASK' ? '📝 งานที่ต้องส่ง (ด่วน)' : '📢 ประกาศแจ้งให้ทราบ'}
+                    {activeAlert.category === 'TASK'
+                      ? activeAlert.isSubmitted
+                        ? '✅ ส่งงานเรียบร้อยแล้ว'
+                        : '📝 งานที่ต้องส่ง (ด่วน)'
+                      : '📢 ประกาศแจ้งให้ทราบ'}
                   </span>
 
                   <span
                     className={`text-sm font-bold px-3 py-0.5 rounded-lg border ${
                       activeAlert.theme === 'RED'
                         ? 'text-rose-950 bg-rose-100/90 border-rose-300'
+                        : activeAlert.isSubmitted
+                        ? 'text-emerald-950 bg-emerald-100/90 border-emerald-300'
                         : 'text-amber-950 bg-amber-100/90 border-amber-300'
                     }`}
                   >
@@ -426,7 +450,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       ? ' (วันนี้!)'
                       : activeAlert.diffDays === 1
                       ? ' (พรุ่งนี้)'
-                      : ` (อีก ${activeAlert.diffDays} วัน)`}
+                      : activeAlert.diffDays > 1
+                      ? ` (อีก ${activeAlert.diffDays} วัน)`
+                      : activeAlert.diffDays === -1
+                      ? ' (เมื่อวานนี้)'
+                      : ` (ประกาศเมื่อ ${Math.abs(activeAlert.diffDays)} วันก่อน)`}
                   </span>
 
                   {upcomingAlerts.length > 1 && (

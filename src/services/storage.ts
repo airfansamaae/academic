@@ -4,6 +4,7 @@ import {
   UserStatus,
   Task,
   Announcement,
+  AnnouncementType,
   Submission,
   DocumentItem,
   SystemSettings,
@@ -910,22 +911,30 @@ export class StorageService {
     list.unshift(newAnn);
     this.saveAnnouncements(list);
     broadcastLocalChange('ANNOUNCEMENT_CREATED', newAnn);
+
+    // Synchronize to Cloudflare D1 non-blockingly so all members immediately see the announcement
+    CloudflareApiService.syncAnnouncement(newAnn).catch(() => {});
+
     return newAnn;
   }
 
   static updateAnnouncement(ann: Announcement): void {
+    const updatedAnn = { ...ann, updatedAt: getNowISO() };
     const list = this.getAnnouncements().map((a) =>
-      a.id === ann.id ? { ...ann, updatedAt: getNowISO() } : a
+      a.id === ann.id ? updatedAnn : a
     );
     this.saveAnnouncements(list);
-    broadcastLocalChange('ANNOUNCEMENT_UPDATED', ann);
+    broadcastLocalChange('ANNOUNCEMENT_UPDATED', updatedAnn);
+
+    // Synchronize to Cloudflare D1 non-blockingly
+    CloudflareApiService.syncAnnouncement(updatedAnn).catch(() => {});
   }
 
   static deleteAnnouncement(id: string): void {
     this.addDeletedAnnId(id);
     const list = this.getAnnouncements().filter((a) => a.id !== id);
     this.saveAnnouncements(list);
-    CloudflareApiService.deleteAnnouncement(id);
+    CloudflareApiService.deleteAnnouncement(id).catch(() => {});
     broadcastLocalChange('ANNOUNCEMENT_DELETED', { id });
   }
 
@@ -1346,14 +1355,19 @@ export class StorageService {
         }
       }
 
-      // 2. Sync Tasks (Honor deletion tombstones & server-authoritative deletion)
+      // 2. Sync Tasks (Honor deletion tombstones & separate regular tasks from announcements)
       if (data.tasks && Array.isArray(data.tasks)) {
         const deletedTaskIds = this.getDeletedTaskIds();
         const currentTasks = this.getTasks();
         const currentTaskIds = new Set(currentTasks.map((t) => t.id));
 
         const nonDeletedCloudTasks = data.tasks.filter(
-          (t: any) => !deletedTaskIds.has(t.id) && t.status !== 'DELETED' && t._deleted !== true
+          (t: any) =>
+            !deletedTaskIds.has(t.id) &&
+            t.status !== 'DELETED' &&
+            t._deleted !== true &&
+            t.type !== 'ANNOUNCEMENT' &&
+            !t.id.startsWith('ann-')
         );
 
         const mappedTasks: Task[] = nonDeletedCloudTasks.map((t: any) => ({
@@ -1472,41 +1486,52 @@ export class StorageService {
         }
       }
 
-      // 4. Sync Announcements
-      if (data.announcements && Array.isArray(data.announcements)) {
-        const deletedAnnIds = this.getDeletedAnnIds();
-        const currentAnns = this.getAnnouncements();
+      // 4. Sync Announcements (Cross-device realtime synchronization)
+      const rawAnnList = [
+        ...(Array.isArray(data.announcements) ? data.announcements : []),
+        ...(Array.isArray(data.tasks) ? data.tasks.filter((t: any) => t.type === 'ANNOUNCEMENT' || (t.id && t.id.startsWith('ann-'))) : []),
+      ];
 
-        const nonDeletedCloudAnns = data.announcements.filter(
-          (a: any) => !deletedAnnIds.has(a.id) && a.status !== 'DELETED' && a._deleted !== true
-        );
+      const deletedAnnIds = this.getDeletedAnnIds();
+      const currentAnns = this.getAnnouncements();
 
-        const mappedAnns: Announcement[] = nonDeletedCloudAnns.map((a: any) => ({
+      const nonDeletedCloudAnns = rawAnnList.filter(
+        (a: any) => a && a.id && !deletedAnnIds.has(a.id) && a.status !== 'DELETED' && a._deleted !== true
+      );
+
+      const mappedAnnsMap = new Map<string, Announcement>();
+
+      nonDeletedCloudAnns.forEach((a: any) => {
+        const rawType = a.type === 'ANNOUNCEMENT' ? (a.gDriveFolderId || 'ACTIVITY') : (a.type || 'ACTIVITY');
+        const annType = (['ANNOUNCEMENT', 'HOLIDAY', 'ACTIVITY'].includes(rawType) ? rawType : 'ACTIVITY') as AnnouncementType;
+        const createdBy = a.createdBy || (a.type === 'ANNOUNCEMENT' ? a.gDriveFolderUrl : '') || 'ผู้ดูแลระบบวิชาการ';
+
+        mappedAnnsMap.set(a.id, {
           id: a.id,
-          title: a.title,
+          title: a.title || 'ประกาศแจ้งเพื่อทราบ',
           details: a.details || a.description || '',
-          date: a.date || getNowISO().split('T')[0],
-          type: a.type || 'ACTIVITY',
-          createdBy: a.createdBy || 'ผู้ดูแลระบบวิชาการ',
+          date: a.date || a.deadline || getNowISO().split('T')[0],
+          type: annType,
+          createdBy: createdBy,
           createdAt: a.createdAt || getNowISO(),
           updatedAt: a.updatedAt || a.createdAt || getNowISO(),
-        }));
+        });
+      });
 
-        const cloudAnnIdSet = new Set(mappedAnns.map((a) => a.id));
-        for (const localAnn of currentAnns) {
-          if (!cloudAnnIdSet.has(localAnn.id)) {
-            this.addDeletedAnnId(localAnn.id);
-            hasChanges = true;
-          }
+      // Preserve local announcements and upload to cloud if not yet synced
+      currentAnns.forEach((localAnn) => {
+        if (!deletedAnnIds.has(localAnn.id) && !mappedAnnsMap.has(localAnn.id)) {
+          mappedAnnsMap.set(localAnn.id, localAnn);
+          // Auto sync to cloud in background
+          CloudflareApiService.syncAnnouncement(localAnn).catch(() => {});
         }
+      });
 
-        const freshDeletedAnnIds = this.getDeletedAnnIds();
-        const finalAnns = mappedAnns.filter((a) => !freshDeletedAnnIds.has(a.id));
+      const finalAnns = Array.from(mappedAnnsMap.values()).filter((a) => !deletedAnnIds.has(a.id));
 
-        if (hasChanges || finalAnns.length !== currentAnns.length) {
-          localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(finalAnns));
-          hasChanges = true;
-        }
+      if (finalAnns.length !== currentAnns.length || hasChanges) {
+        localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(finalAnns));
+        hasChanges = true;
       }
 
       // 5. Sync Documents (Honor deletion tombstones)

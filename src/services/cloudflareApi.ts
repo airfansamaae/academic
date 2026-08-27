@@ -285,6 +285,25 @@ export class CloudflareApiService {
    */
   public static async deleteAnnouncement(id: string): Promise<boolean> {
     try {
+      // 1. Soft-delete in tasks table
+      await this.fetchWithTimeout(`${this.workerUrl}/api/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id,
+          title: '[DELETED]',
+          type: 'DELETED',
+          description: '',
+          deadline: '',
+          status: 'DELETED',
+          assigneeIds: [],
+          gDriveFolderId: '',
+          gDriveFolderUrl: '',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }),
+      }, 3500).catch(() => {});
+
       await this.fetchWithTimeout(`${this.workerUrl}/api/announcements/${id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
@@ -298,6 +317,43 @@ export class CloudflareApiService {
       }, 3500).catch(() => {});
 
       return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  /**
+   * Save / Sync Announcement to Cloudflare D1
+   */
+  public static async syncAnnouncement(ann: Announcement): Promise<boolean> {
+    try {
+      // Store in tasks table with type 'ANNOUNCEMENT' for full persistence
+      const response = await this.fetchWithTimeout(`${this.workerUrl}/api/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: ann.id,
+          title: ann.title,
+          type: 'ANNOUNCEMENT',
+          description: ann.details || '',
+          deadline: ann.date || '',
+          status: 'ACTIVE',
+          assigneeIds: [],
+          gDriveFolderId: ann.type || 'ACTIVITY',
+          gDriveFolderUrl: ann.createdBy || 'ผู้ดูแลระบบวิชาการ',
+          createdAt: ann.createdAt,
+          updatedAt: ann.updatedAt,
+        }),
+      }, 3500);
+
+      // Also attempt dedicated /api/announcements endpoint
+      this.fetchWithTimeout(`${this.workerUrl}/api/announcements`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ann),
+      }, 3500).catch(() => {});
+
+      return response.ok;
     } catch (err) {
       return false;
     }
