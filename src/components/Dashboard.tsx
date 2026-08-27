@@ -16,6 +16,7 @@ import {
   Info,
   X,
   Send,
+  ClipboardCheck,
 } from 'lucide-react';
 import { User, Task, Announcement, Submission, NavigationTab } from '../types';
 
@@ -449,19 +450,45 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
             {/* Controls & Action Button */}
             <div className="flex items-center justify-between sm:justify-end gap-2.5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200/60">
-              {activeAlert.category === 'TASK' && (
+              {activeAlert.category === 'TASK' ? (
+                isAdmin ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onNavigateTab('TRACKING_REVIEW');
+                    }}
+                    className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 active:scale-95 transition-all rounded-xl shadow-xs inline-flex items-center space-x-1.5 cursor-pointer"
+                  >
+                    <ClipboardCheck className="w-3.5 h-3.5" />
+                    <span>ติดตาม & ตรวจงาน</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onNavigateTab('ASSIGN_SUBMIT');
+                      if (onSelectTaskToSubmit) {
+                        onSelectTaskToSubmit(activeAlert.item as Task);
+                      }
+                    }}
+                    className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 active:scale-95 transition-all rounded-xl shadow-xs inline-flex items-center space-x-1.5 cursor-pointer"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>กดส่งงานตอนนี้</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                )
+              ) : (
                 <button
                   type="button"
                   onClick={() => {
                     onNavigateTab('ASSIGN_SUBMIT');
-                    if (onSelectTaskToSubmit && activeAlert.category === 'TASK') {
-                      onSelectTaskToSubmit(activeAlert.item as Task);
-                    }
                   }}
-                  className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 active:scale-95 transition-all rounded-xl shadow-xs inline-flex items-center space-x-1.5 cursor-pointer"
+                  className="px-4 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 active:scale-95 transition-all rounded-xl shadow-xs inline-flex items-center space-x-1.5 cursor-pointer"
                 >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>ไปที่หน้าส่งงาน</span>
+                  <Megaphone className="w-3.5 h-3.5" />
+                  <span>ดูประกาศทั้งหมด</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               )}

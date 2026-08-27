@@ -8,10 +8,10 @@ import {
   FileSpreadsheet,
   File,
   Image as ImageIcon,
-  Eye,
   Trash2,
   Edit3,
   ExternalLink,
+  Eye,
   HardDrive,
   ChevronDown,
   ChevronRight,
@@ -77,9 +77,6 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
   const [editSubject, setEditSubject] = useState('');
   const [editDesc, setEditDesc] = useState('');
 
-  // Image Lightbox / Preview Modal
-  const [previewImage, setPreviewImage] = useState<{ file: SubmissionFile; sub: Submission } | null>(null);
-
   const activeMembers = useMemo(
     () => users.filter((u) => u.role === 'MEMBER' && u.status === 'ACTIVE'),
     [users]
@@ -143,6 +140,23 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
       ...prev,
       [taskId]: !prev[taskId],
     }));
+  };
+
+  // Helper to open file directly in Google Drive in a new tab
+  const handleViewDriveFile = (file: SubmissionFile, sub?: Submission) => {
+    const fileId = file.gDriveUrl ? extractDriveFileId(file.gDriveUrl) : null;
+    if (fileId && !fileId.startsWith('sample') && fileId !== GDRIVE_FOLDER_ID && !isProtectedRootFolder(fileId)) {
+      window.open(`https://drive.google.com/file/d/${fileId}/view?usp=sharing`, '_blank', 'noopener,noreferrer');
+      notifySuccess(`เปิดดู ${file.name} ใน Google Drive 🔗`);
+      return;
+    }
+    if (file.gDriveUrl && file.gDriveUrl.startsWith('http')) {
+      window.open(file.gDriveUrl, '_blank', 'noopener,noreferrer');
+      notifySuccess(`เปิดดู ${file.name} ใน Google Drive 🔗`);
+      return;
+    }
+    window.open(GDRIVE_FOLDER_URL, '_blank', 'noopener,noreferrer');
+    notifyInfo('เปิดโฟลเดอร์ Google Drive 📁');
   };
 
   // Safe Blob Downloader
@@ -676,7 +690,7 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
                                     )}
                                   </td>
 
-                                  {/* Direct Download File Buttons (For both Admin & Members) */}
+                                  {/* Direct Download & Google Drive Preview File Buttons (For both Admin & Members) */}
                                   <td className="py-3 px-3 align-middle">
                                     <div className="flex flex-wrap gap-1.5">
                                       {sub.files && sub.files.length > 0 ? (
@@ -690,53 +704,38 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
                                           return (
                                             <div
                                               key={file.id}
-                                              className="inline-flex items-center space-x-1 p-1 bg-white hover:bg-slate-50 border border-slate-200 hover:border-blue-300 rounded-xl shadow-2xs transition-all"
+                                              className="inline-flex items-center space-x-1 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl p-1 shadow-2xs transition-all"
                                             >
+                                              {/* Download Button */}
                                               <button
                                                 type="button"
-                                                onClick={() => {
-                                                  if (isImage) {
-                                                    setPreviewImage({ file, sub });
-                                                  } else {
-                                                    handleDownloadFile(file, sub);
-                                                  }
-                                                }}
-                                                className="inline-flex items-center space-x-1.5 px-2 py-1 text-left cursor-pointer"
-                                                title={isImage ? `กดดูตัวอย่างรูปภาพ ${file.name}` : `กดดาวน์โหลดไฟล์ ${file.name}`}
+                                                onClick={() => handleDownloadFile(file, sub)}
+                                                className="inline-flex items-center space-x-1.5 px-2 py-1 hover:bg-blue-50 text-slate-700 hover:text-blue-700 rounded-lg transition-colors cursor-pointer"
+                                                title={`กดดาวน์โหลดไฟล์ ${file.name}`}
                                               >
                                                 {isImage ? (
-                                                  file.previewUrl ? (
-                                                    <img
-                                                      src={file.previewUrl}
-                                                      alt="Thumbnail"
-                                                      className="w-5 h-5 rounded object-cover border border-slate-200 shrink-0"
-                                                    />
-                                                  ) : (
-                                                    <ImageIcon className="w-4 h-4 text-amber-500 shrink-0" />
-                                                  )
+                                                  <ImageIcon className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                                                 ) : isPdf ? (
-                                                  <FileText className="w-4 h-4 text-rose-500 shrink-0" />
+                                                  <FileText className="w-3.5 h-3.5 text-rose-500 shrink-0" />
                                                 ) : isSpreadsheet ? (
-                                                  <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+                                                  <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                                                 ) : (
-                                                  <File className="w-4 h-4 text-blue-600 shrink-0" />
+                                                  <File className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                                                 )}
-                                                <span className="text-xs font-bold text-slate-800 hover:text-blue-600 max-w-[120px] truncate">
+                                                <span className="text-xs font-bold max-w-[120px] truncate">
                                                   {file.name}
                                                 </span>
+                                                <Download className="w-3.5 h-3.5 text-slate-400 shrink-0 hover:text-blue-600" />
                                               </button>
 
-                                              {/* Download Action Button */}
+                                              {/* View in Google Drive Icon Button */}
                                               <button
                                                 type="button"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  handleDownloadFile(file, sub);
-                                                }}
-                                                className="p-1 text-blue-600 hover:text-white hover:bg-blue-600 rounded-lg transition-colors cursor-pointer"
-                                                title={`ดาวน์โหลด ${file.name}`}
+                                                onClick={() => handleViewDriveFile(file, sub)}
+                                                className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                                                title={`🔗 ดูตัวอย่างไฟล์ ${file.name} ใน Google Drive`}
                                               >
-                                                <Download className="w-3.5 h-3.5 shrink-0" />
+                                                <Eye className="w-3.5 h-3.5" />
                                               </button>
                                             </div>
                                           );
@@ -839,81 +838,6 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
               >
                 บันทึกการแก้ไข
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Image Preview Lightbox Modal */}
-      {previewImage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-5 shadow-2xl border border-slate-100 relative flex flex-col max-h-[90vh]">
-            {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                  <ImageIcon className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 truncate max-w-sm">
-                    {previewImage.file.name}
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    ส่งโดย: {previewImage.sub.memberName} ({previewImage.sub.memberSchool})
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setPreviewImage(null)}
-                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Image Preview Container */}
-            <div className="my-4 flex-1 flex items-center justify-center overflow-auto rounded-2xl bg-slate-900/5 p-2 min-h-[260px] max-h-[55vh]">
-              {previewImage.file.previewUrl ? (
-                <img
-                  src={previewImage.file.previewUrl}
-                  alt={previewImage.file.name}
-                  className="max-w-full max-h-[50vh] object-contain rounded-xl shadow-xs"
-                />
-              ) : (
-                <div className="text-center p-6 text-slate-400">
-                  <ImageIcon className="w-12 h-12 mx-auto mb-2 opacity-40 text-amber-500" />
-                  <p className="text-xs font-semibold text-slate-600">ไฟล์รูปภาพหลักฐานการส่งงาน</p>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    กดปุ่มดาวน์โหลดด้านล่างเพื่อบันทึกไฟล์ภาพลงในคอมพิวเตอร์ของคุณ
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Footer Actions */}
-            <div className="flex items-center justify-between pt-3 border-t border-slate-100 shrink-0">
-              <span className="text-[11px] text-slate-400 font-mono">
-                {previewImage.file.size ? (previewImage.file.size / 1024).toFixed(1) + ' KB' : 'Image File'}
-              </span>
-              <div className="flex items-center space-x-2">
-                <button
-                  type="button"
-                  onClick={() => setPreviewImage(null)}
-                  className="px-3.5 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
-                >
-                  ปิด
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleDownloadFile(previewImage.file, previewImage.sub);
-                  }}
-                  className="inline-flex items-center space-x-1.5 px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition-all cursor-pointer active:scale-95"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>ดาวน์โหลดไฟล์ภาพนี้</span>
-                </button>
-              </div>
             </div>
           </div>
         </div>

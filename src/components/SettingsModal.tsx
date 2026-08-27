@@ -13,40 +13,11 @@ import {
   Save,
   Check,
   Loader2,
-  Cloud,
-  RefreshCw,
-  ArrowUpRight,
-  Database,
-  FolderOpen,
-  FolderPlus,
-  Copy,
-  ExternalLink,
-  Code2,
-  Sparkles,
 } from 'lucide-react';
 import { User, SystemSettings } from '../types';
-import {
-  StorageService,
-  GDRIVE_FOLDER_ID,
-  GDRIVE_FOLDER_URL,
-  GDRIVE_OFFICIAL_ORDERS_FOLDER_ID,
-  GDRIVE_SAMPLE_DOCS_FOLDER_ID,
-} from '../services/storage';
-import {
-  uploadFileToGoogleDrive,
-  createGoogleDriveFolder,
-  deleteGoogleDriveFolder,
-  deleteGoogleDriveFile,
-  getActiveGasWebhookUrl,
-  GOOGLE_APPS_SCRIPT_CODE,
-  GAS_WEBHOOK_URL,
-} from '../services/driveUpload';
-import { CloudflareApiService } from '../services/cloudflareApi';
-import {
-  notifySuccess,
-  notifyError,
-  confirmDialog,
-} from '../services/notifications';
+import { StorageService } from '../services/storage';
+import { uploadFileToGoogleDrive } from '../services/driveUpload';
+import { notifySuccess, notifyError, confirmDialog } from '../services/notifications';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -118,8 +89,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
   const isAdmin = currentUser?.role === 'ADMIN';
 
-  // Tabs: 'PROFILE' | 'PASSWORD' | 'SCHOOL' | 'MEMBERS' | 'GDRIVE'
-  const [activeTab, setActiveTab] = useState<'PROFILE' | 'PASSWORD' | 'SCHOOL' | 'MEMBERS' | 'GDRIVE'>('PROFILE');
+  // Tabs: 'PROFILE' | 'PASSWORD' | 'SCHOOL' | 'MEMBERS'
+  const [activeTab, setActiveTab] = useState<'PROFILE' | 'PASSWORD' | 'SCHOOL' | 'MEMBERS'>('PROFILE');
 
   // Profile Form State
   const [fullName, setFullName] = useState(currentUser?.fullName || '');
@@ -142,16 +113,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [passwordSavedSuccess, setPasswordSavedSuccess] = useState(false);
   const [isSavingSchool, setIsSavingSchool] = useState(false);
   const [schoolSavedSuccess, setSchoolSavedSuccess] = useState(false);
-
-  // Google Drive tab state
-  const [gasWebhookUrl, setGasWebhookUrl] = useState(settings.gasWebhookUrl || GAS_WEBHOOK_URL);
-  const [isSavingWebhook, setIsSavingWebhook] = useState(false);
-  const [copiedCode, setCopiedCode] = useState(false);
-  const [isDiagnosing, setIsDiagnosing] = useState(false);
-  const [diagStep1, setDiagStep1] = useState<'idle' | 'running' | 'success' | 'failed'>('idle');
-  const [diagStep2, setDiagStep2] = useState<'idle' | 'running' | 'success' | 'failed'>('idle');
-  const [diagStep3, setDiagStep3] = useState<'idle' | 'running' | 'success' | 'failed'>('idle');
-  const [diagLog, setDiagLog] = useState<string | null>(null);
 
   // Admin Member Approvals & Deletion with Zero-Latency Optimistic State
   const [localUsers, setLocalUsers] = useState<User[]>(users);
@@ -178,112 +139,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   }, [isOpen, currentUser?.id]);
 
   if (!isOpen || !currentUser) return null;
-
-  const handleCopyCode = async () => {
-    try {
-      await navigator.clipboard.writeText(GOOGLE_APPS_SCRIPT_CODE);
-      setCopiedCode(true);
-      notifySuccess('คัดลอกโค้ด Google Apps Script v2 เรียบร้อยแล้ว! นำไปวางใน Apps Script ได้ทันที 📋✨');
-      setTimeout(() => setCopiedCode(false), 3000);
-    } catch {
-      notifyError('ไม่สามารถคัดลอกโค้ดได้อัตโนมัติ กรุณากดเลือกและคัดลอกด้วยตนเอง');
-    }
-  };
-
-  const handleSaveWebhookUrl = () => {
-    setIsSavingWebhook(true);
-    try {
-      const cleanUrl = gasWebhookUrl.trim();
-      const updatedSettings: SystemSettings = {
-        ...settings,
-        gasWebhookUrl: cleanUrl,
-        updatedAt: new Date().toISOString(),
-      };
-      StorageService.saveSettings(updatedSettings);
-      notifySuccess('บันทึก Google Apps Script Webhook URL สำเร็จ! ✨');
-      onRefreshData();
-    } catch (err) {
-      notifyError('เกิดข้อผิดพลาดในการบันทึก URL');
-    } finally {
-      setIsSavingWebhook(false);
-    }
-  };
-
-  const handleResetWebhookUrl = () => {
-    setGasWebhookUrl(GAS_WEBHOOK_URL);
-    const updatedSettings: SystemSettings = {
-      ...settings,
-      gasWebhookUrl: GAS_WEBHOOK_URL,
-      updatedAt: new Date().toISOString(),
-    };
-    StorageService.saveSettings(updatedSettings);
-    notifySuccess('คืนค่า Google Apps Script Webhook URL เริ่มต้นเรียบร้อยแล้ว');
-    onRefreshData();
-  };
-
-  const handleRunFullDiagnostic = async () => {
-    setIsDiagnosing(true);
-    setDiagStep1('running');
-    setDiagStep2('idle');
-    setDiagStep3('idle');
-    setDiagLog(null);
-
-    const activeUrl = gasWebhookUrl.trim() || GAS_WEBHOOK_URL;
-    let createdTestFolderId = '';
-
-    try {
-      // Step 1: GET Ping
-      try {
-        const pingRes = await fetch(activeUrl, { method: 'GET' });
-        if (pingRes.ok) {
-          const pingData = await pingRes.json().catch(() => null);
-          if (pingData?.status === 'online' || pingData?.version === '2.0') {
-            setDiagStep1('success');
-          } else {
-            setDiagStep1('failed');
-          }
-        } else {
-          setDiagStep1('failed');
-        }
-      } catch {
-        setDiagStep1('failed');
-      }
-
-      // Step 2: POST createFolder
-      setDiagStep2('running');
-      const now = new Date();
-      const testName = `ทดสอบระบบ_${now.toLocaleDateString('th-TH')}_${now.getHours()}${now.getMinutes()}${now.getSeconds()}`;
-      const folderRes = await createGoogleDriveFolder(testName, undefined, activeUrl);
-
-      if (folderRes.success && folderRes.folderId && !folderRes.folderId.startsWith('task_folder_')) {
-        createdTestFolderId = folderRes.folderId;
-        setDiagStep2('success');
-
-        // Step 3: POST deleteFolder (test automatic deletion!)
-        setDiagStep3('running');
-        const deleteRes = await deleteGoogleDriveFolder(createdTestFolderId, activeUrl);
-        if (deleteRes) {
-          setDiagStep3('success');
-          setDiagLog(`✅ การทดสอบสมบูรณ์แบบ 100%!\n- ตรวจพบ Webhook v2\n- สร้างโฟลเดอร์ "${testName}" สำเร็จ (ID: ${createdTestFolderId})\n- ลบโฟลเดอร์ทดสอบออกจาก Google Drive สำเร็จอัตโนมัติ`);
-          notifySuccess('ทดสอบระบบ Google Drive สำเร็จสมบูรณ์แบบทั้งการสร้างและลบ 📁🗑️✨');
-        } else {
-          setDiagStep3('failed');
-          setDiagLog(`⚠️ สร้างโฟลเดอร์สำเร็จ แต่คำสั่งลบโฟลเดอร์ไม่ตอบสนอง กรุณาตรวจสอบการ Deploy เวอร์ชันใหม่ใน Apps Script`);
-        }
-      } else {
-        setDiagStep2('failed');
-        setDiagStep3('idle');
-        setDiagLog(`❌ Google Apps Script ปัจจุบันยังไม่รองรับคำสั่งสร้างโฟลเดอร์ (หรือยังเป็น Script เก่า)\nกรุณาคัดลอกโค้ด v2 ด้านล่างไปวางและ Deploy ใน Google Apps Script ตามคำแนะนำ 4 ขั้นตอน`);
-        notifyError('Apps Script ยังไม่รองรับคำสั่ง v2 กรุณาอัปเดตโค้ดใน Apps Script');
-      }
-    } catch (err: any) {
-      setDiagStep2('failed');
-      setDiagStep3('failed');
-      setDiagLog(`เกิดข้อผิดพลาดในการเชื่อมต่อ: ${err?.message || err}`);
-    } finally {
-      setIsDiagnosing(false);
-    }
-  };
 
   // Handle Avatar Upload directly to Profile & Cloud
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -563,19 +418,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     {pendingUsers.length}
                   </span>
                 )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab('GDRIVE')}
-                className={`px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center space-x-1.5 shrink-0 ${
-                  activeTab === 'GDRIVE'
-                    ? 'bg-purple-50 text-purple-700 border border-purple-200 shadow-2xs'
-                    : 'text-slate-600 hover:bg-slate-50'
-                }`}
-              >
-                <FolderOpen className="w-4 h-4 text-amber-500" />
-                <span>5. Google Drive & Apps Script</span>
               </button>
             </>
           )}
@@ -944,245 +786,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                   ))}
                 </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 5: Google Drive & Webhook (Admin Only) */}
-          {activeTab === 'GDRIVE' && isAdmin && (
-            <div className="space-y-4 text-xs">
-              {/* Info Card */}
-              <div className="p-4 bg-gradient-to-r from-amber-50 to-blue-50 rounded-2xl border border-amber-200/80 shadow-2xs space-y-2">
-                <div className="flex items-center space-x-2 text-slate-800 font-bold text-sm">
-                  <Sparkles className="w-4 h-4 text-amber-600" />
-                  <span>ระบบสร้างโฟลเดอร์ตามหัวข้อ & ลบไฟล์/โฟลเดอร์ใน Google Drive อัตโนมัติ</span>
-                </div>
-                <p className="text-slate-600 leading-relaxed text-[11px]">
-                  เมื่อ Admin <strong>สร้างงานมอบหมายตามหัวข้อ</strong> ระบบจะส่งคำสั่งสร้างโฟลเดอร์ย่อยใน Google Drive ตามชื่อหัวข้อนั้นโดยอัตโนมัติ และเมื่อสมาชิกส่งงาน ไฟล์จะถูกจัดเก็บเข้าโฟลเดอร์หัวข้อนั้นโดยตรง รวมถึงเมื่อ Admin หรือสมาชิกลบไฟล์หรืองาน ระบบจะส่งคำสั่งลบออกจาก Google Drive โดยอัตโนมัติ
-                </p>
-              </div>
-
-              {/* Webhook URL Setting */}
-              <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <label className="font-bold text-slate-800 flex items-center space-x-1.5">
-                    <Code2 className="w-4 h-4 text-blue-600" />
-                    <span>Google Apps Script Webhook URL</span>
-                  </label>
-                  <button
-                    type="button"
-                    onClick={handleResetWebhookUrl}
-                    className="text-[10px] text-slate-500 hover:text-slate-700 underline cursor-pointer"
-                  >
-                    คืนค่าเริ่มต้น
-                  </button>
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="url"
-                    value={gasWebhookUrl}
-                    onChange={(e) => setGasWebhookUrl(e.target.value)}
-                    placeholder="https://script.google.com/macros/s/.../exec"
-                    className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-xl text-slate-800 font-mono text-[11px] focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSaveWebhookUrl}
-                    disabled={isSavingWebhook}
-                    className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold flex items-center space-x-1.5 transition-colors cursor-pointer text-xs"
-                  >
-                    {isSavingWebhook ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                    <span>บันทึก URL</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Full Diagnostic Test Action */}
-              <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
-                    <h4 className="font-bold text-slate-800">เครื่องมือทดสอบการทำงานของ Google Drive</h4>
-                    <p className="text-slate-500 text-[11px]">
-                      ทดสอบตรวจสถานะ, สร้างโฟลเดอร์ตามชื่อ, และลบโฟลเดอร์ออกจาก Google Drive จริง
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleRunFullDiagnostic}
-                    disabled={isDiagnosing}
-                    className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold flex items-center justify-center space-x-1.5 transition-all cursor-pointer disabled:opacity-50 shadow-2xs text-xs"
-                  >
-                    {isDiagnosing ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>กำลังทดสอบระบบ...</span>
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        <span>เริ่มทดสอบระบบ Drive</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                {/* 3-Step Live Indicators */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
-                  <div className={`p-2.5 rounded-xl border flex items-center space-x-2 ${
-                    diagStep1 === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' :
-                    diagStep1 === 'failed' ? 'bg-rose-50 border-rose-200 text-rose-800' :
-                    diagStep1 === 'running' ? 'bg-blue-50 border-blue-200 text-blue-800' :
-                    'bg-white border-slate-200 text-slate-600'
-                  }`}>
-                    {diagStep1 === 'running' ? <Loader2 className="w-4 h-4 animate-spin text-blue-600 shrink-0" /> :
-                     diagStep1 === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> :
-                     <div className="w-4 h-4 rounded-full border border-slate-300 flex items-center justify-center text-[9px] shrink-0">1</div>}
-                    <span className="truncate">1. ตรวจการเชื่อมต่อ (Ping)</span>
-                  </div>
-
-                  <div className={`p-2.5 rounded-xl border flex items-center space-x-2 ${
-                    diagStep2 === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' :
-                    diagStep2 === 'failed' ? 'bg-rose-50 border-rose-200 text-rose-800' :
-                    diagStep2 === 'running' ? 'bg-blue-50 border-blue-200 text-blue-800' :
-                    'bg-white border-slate-200 text-slate-600'
-                  }`}>
-                    {diagStep2 === 'running' ? <Loader2 className="w-4 h-4 animate-spin text-blue-600 shrink-0" /> :
-                     diagStep2 === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> :
-                     <div className="w-4 h-4 rounded-full border border-slate-300 flex items-center justify-center text-[9px] shrink-0">2</div>}
-                    <span className="truncate">2. สร้างโฟลเดอร์จริง</span>
-                  </div>
-
-                  <div className={`p-2.5 rounded-xl border flex items-center space-x-2 ${
-                    diagStep3 === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' :
-                    diagStep3 === 'failed' ? 'bg-rose-50 border-rose-200 text-rose-800' :
-                    diagStep3 === 'running' ? 'bg-blue-50 border-blue-200 text-blue-800' :
-                    'bg-white border-slate-200 text-slate-600'
-                  }`}>
-                    {diagStep3 === 'running' ? <Loader2 className="w-4 h-4 animate-spin text-blue-600 shrink-0" /> :
-                     diagStep3 === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> :
-                     <div className="w-4 h-4 rounded-full border border-slate-300 flex items-center justify-center text-[9px] shrink-0">3</div>}
-                    <span className="truncate">3. ลบโฟลเดอร์อัตโนมัติ</span>
-                  </div>
-                </div>
-
-                {diagLog && (
-                  <div className={`p-3 rounded-xl border font-mono text-[11px] whitespace-pre-line leading-relaxed ${
-                    diagLog.startsWith('✅') ? 'bg-emerald-50/90 border-emerald-300 text-emerald-900' : 'bg-rose-50/90 border-rose-300 text-rose-900'
-                  }`}>
-                    {diagLog}
-                  </div>
-                )}
-              </div>
-
-              {/* Drive Folders Overview */}
-              <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-3">
-                <h4 className="font-bold text-slate-800 flex items-center space-x-2">
-                  <FolderOpen className="w-4 h-4 text-blue-600" />
-                  <span>โฟลเดอร์หลักใน Google Drive</span>
-                </h4>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
-                  <a
-                    href={`https://drive.google.com/drive/folders/${GDRIVE_FOLDER_ID}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="p-3 bg-white rounded-xl border border-slate-200 hover:border-blue-400 hover:shadow-xs transition-all flex flex-col justify-between"
-                  >
-                    <div>
-                      <p className="font-bold text-slate-700 flex items-center justify-between">
-                        <span>โฟลเดอร์งานมอบหมาย (Root)</span>
-                        <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
-                      </p>
-                      <p className="text-[10px] text-slate-500 font-mono mt-1 truncate">
-                        ID: {GDRIVE_FOLDER_ID}
-                      </p>
-                    </div>
-                    <span className="text-[10px] text-blue-600 font-medium mt-2">เปิดดูใน Drive →</span>
-                  </a>
-
-                  <a
-                    href={`https://drive.google.com/drive/folders/${GDRIVE_OFFICIAL_ORDERS_FOLDER_ID}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="p-3 bg-white rounded-xl border border-slate-200 hover:border-purple-400 hover:shadow-xs transition-all flex flex-col justify-between"
-                  >
-                    <div>
-                      <p className="font-bold text-slate-700 flex items-center justify-between">
-                        <span>โฟลเดอร์หนังสือคำสั่ง</span>
-                        <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
-                      </p>
-                      <p className="text-[10px] text-slate-500 font-mono mt-1 truncate">
-                        ID: {GDRIVE_OFFICIAL_ORDERS_FOLDER_ID}
-                      </p>
-                    </div>
-                    <span className="text-[10px] text-purple-600 font-medium mt-2">เปิดดูใน Drive →</span>
-                  </a>
-
-                  <a
-                    href={`https://drive.google.com/drive/folders/${GDRIVE_SAMPLE_DOCS_FOLDER_ID}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="p-3 bg-white rounded-xl border border-slate-200 hover:border-emerald-400 hover:shadow-xs transition-all flex flex-col justify-between"
-                  >
-                    <div>
-                      <p className="font-bold text-slate-700 flex items-center justify-between">
-                        <span>โฟลเดอร์เอกสารตัวอย่าง</span>
-                        <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
-                      </p>
-                      <p className="text-[10px] text-slate-500 font-mono mt-1 truncate">
-                        ID: {GDRIVE_SAMPLE_DOCS_FOLDER_ID}
-                      </p>
-                    </div>
-                    <span className="text-[10px] text-emerald-600 font-medium mt-2">เปิดดูใน Drive →</span>
-                  </a>
-                </div>
-              </div>
-
-              {/* Google Apps Script Deploy Code */}
-              <div className="p-4 bg-slate-900 rounded-2xl border border-slate-800 text-slate-200 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center space-x-2">
-                    <Code2 className="w-4 h-4 text-emerald-400" />
-                    <span className="font-bold text-white text-xs">
-                      โค้ด Google Apps Script API v2 (สร้างโฟลเดอร์ & ลบไฟล์/โฟลเดอร์อัตโนมัติ)
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleCopyCode}
-                    className={`px-3 py-1.5 rounded-xl font-bold flex items-center space-x-1.5 transition-all cursor-pointer text-xs ${
-                      copiedCode
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
-                    }`}
-                  >
-                    {copiedCode ? (
-                      <>
-                        <Check className="w-3.5 h-3.5" />
-                        <span>คัดลอกสำเร็จ!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>คัดลอกโค้ด Apps Script</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                <div className="text-[11px] text-slate-300 space-y-1.5 bg-slate-950/80 p-3.5 rounded-xl border border-slate-800">
-                  <p className="text-amber-300 font-bold">📌 4 ขั้นตอนการอัปเดตใน Google Apps Script (สำคัญมาก):</p>
-                  <ol className="list-decimal list-inside space-y-1 text-slate-300">
-                    <li>เปิด <a href="https://script.google.com" target="_blank" rel="noreferrer" className="text-blue-400 underline font-semibold">script.google.com</a> แล้วเปิดโปรเจกต์เดิมของท่าน</li>
-                    <li>วางโค้ดชุดนี้แทนที่โค้ดเดิมทั้งหมดในไฟล์ <code className="text-emerald-300 bg-slate-800 px-1 py-0.5 rounded font-mono">Code.gs</code> แล้วกดบันทึก (รูปแผ่นดิสก์)</li>
-                    <li>กดปุ่มสีน้ำเงิน <strong>"ทำให้ใช้งานได้ (Deploy)"</strong> ด้านบนขวา &gt; เลือก <strong>"จัดการการทำให้ใช้งานได้ (Manage deployments)"</strong></li>
-                    <li>กดรูปดินสอ ✏️ &gt; ช่องเวอร์ชันเลือก <strong>"ใหม่ (New)"</strong> &gt; สิทธิ์การเข้าถึงเลือก <strong>"ทุกคน (Anyone)"</strong> &gt; กด <strong>"ทำให้ใช้งานได้ (Deploy)"</strong></li>
-                  </ol>
-                </div>
-
-                <pre className="p-3 bg-slate-950 rounded-xl overflow-x-auto text-[10px] font-mono text-slate-300 max-h-52 scrollbar-thin border border-slate-800">
-                  {GOOGLE_APPS_SCRIPT_CODE}
-                </pre>
               </div>
             </div>
           )}
