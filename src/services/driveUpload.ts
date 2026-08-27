@@ -394,8 +394,9 @@ export async function uploadFileToGoogleDrive(
     const reader = new FileReader();
 
     reader.onload = async () => {
+      let base64Data = '';
       try {
-        const base64Data = reader.result as string;
+        base64Data = (reader.result as string) || '';
         const payload = {
           action: 'upload',
           name: file.name,
@@ -429,7 +430,7 @@ export async function uploadFileToGoogleDrive(
                 success: true,
                 fileId,
                 fileUrl,
-                downloadUrl: data.downloadUrl || localPreviewUrl || fileUrl,
+                downloadUrl: base64Data || data.downloadUrl || localPreviewUrl || fileUrl,
                 fileName: file.name,
                 fileSize: file.size,
                 fileType,
@@ -445,7 +446,7 @@ export async function uploadFileToGoogleDrive(
         resolve({
           success: true,
           fileUrl: targetFolderUrl,
-          downloadUrl: localPreviewUrl,
+          downloadUrl: base64Data || localPreviewUrl,
           fileName: file.name,
           fileSize: file.size,
           fileType,
@@ -456,7 +457,7 @@ export async function uploadFileToGoogleDrive(
         resolve({
           success: true,
           fileUrl: targetFolderUrl,
-          downloadUrl: localPreviewUrl,
+          downloadUrl: base64Data || localPreviewUrl,
           fileName: file.name,
           fileSize: file.size,
           fileType,
