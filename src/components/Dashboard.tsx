@@ -186,22 +186,38 @@ export const Dashboard: React.FC<DashboardProps> = ({
         item: Task | Announcement;
         statusColor: 'RED' | 'GREEN' | 'YELLOW';
         statusText: string;
+        isRange: boolean;
+        isRangeStart: boolean;
+        isRangeEnd: boolean;
+        isRangeMiddle: boolean;
+        rangeTotalDays: number;
+        rangeDayIndex: number;
       }>
     >();
 
     // Announcements -> Always YELLOW
     announcements.forEach((ann) => {
-      const dates = ann.endDate && ann.endDate >= ann.date
-        ? getDatesInRange(ann.date, ann.endDate)
+      const startDate = ann.date;
+      const endDate = ann.endDate || ann.date;
+      const dates = startDate && endDate && startDate < endDate
+        ? getDatesInRange(startDate, endDate)
         : [ann.date];
 
-      dates.forEach((d) => {
+      const isRange = dates.length > 1;
+
+      dates.forEach((d, idx) => {
         if (!map.has(d)) map.set(d, []);
         map.get(d)!.push({
           type: 'ANNOUNCEMENT',
           item: ann,
           statusColor: 'YELLOW',
           statusText: 'ประกาศแจ้งเพื่อทราบ',
+          isRange,
+          isRangeStart: isRange && idx === 0,
+          isRangeEnd: isRange && idx === dates.length - 1,
+          isRangeMiddle: isRange && idx > 0 && idx < dates.length - 1,
+          rangeTotalDays: dates.length,
+          rangeDayIndex: idx,
         });
       });
     });
@@ -237,17 +253,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
         }
       }
 
-      const dates = task.startDate && task.startDate <= task.dueDate
-        ? getDatesInRange(task.startDate, task.dueDate)
+      const startDate = task.startDate || task.dueDate;
+      const endDate = task.dueDate;
+      const dates = startDate && endDate && startDate < endDate
+        ? getDatesInRange(startDate, endDate)
         : [task.dueDate];
 
-      dates.forEach((d) => {
+      const isRange = dates.length > 1;
+
+      dates.forEach((d, idx) => {
         if (!map.has(d)) map.set(d, []);
         map.get(d)!.push({
           type: 'TASK',
           item: task,
           statusColor,
           statusText,
+          isRange,
+          isRangeStart: isRange && idx === 0,
+          isRangeEnd: isRange && idx === dates.length - 1,
+          isRangeMiddle: isRange && idx > 0 && idx < dates.length - 1,
+          rangeTotalDays: dates.length,
+          rangeDayIndex: idx,
         });
       });
     });
@@ -640,27 +666,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
 
-        {/* Color Legend */}
-        <div className="flex flex-wrap items-center gap-3 sm:gap-6 py-3 px-3.5 text-xs font-medium border border-slate-100 bg-slate-50/60 rounded-2xl my-3">
-          <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Legend:</span>
-          <div className="flex items-center space-x-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-            <span className="text-slate-600 text-xs">
-              {isAdmin ? 'สีแดง = งานที่ยังส่งไม่ครบ' : 'สีแดง = มีงานต้องส่ง / งานค้าง'}
-            </span>
-          </div>
-          <div className="flex items-center space-x-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-            <span className="text-slate-600 text-xs">
-              {isAdmin ? 'สีเขียว = สมาชิกทุกคนส่งครบแล้ว' : 'สีเขียว = ส่งงานแล้ว'}
-            </span>
-          </div>
-          <div className="flex items-center space-x-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-            <span className="text-slate-600 text-xs">สีเหลือง = ประกาศแจ้งเพื่อทราบ / วันสำคัญ</span>
-          </div>
-        </div>
-
         {/* Calendar Grid */}
         <div className="grid grid-cols-7 gap-1.5 sm:gap-2">
           {/* Day of Week Headers */}
@@ -687,7 +692,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             return (
               <div
                 key={`${cell.dateStr}-${idx}`}
-                className={`min-h-[90px] sm:min-h-[115px] p-2 rounded-2xl border transition-all flex flex-col justify-between ${
+                className={`min-h-[95px] sm:min-h-[120px] p-1.5 sm:p-2 rounded-2xl border transition-all flex flex-col justify-between ${
                   cell.isCurrentMonth
                     ? isTodayCell
                       ? 'bg-purple-50/50 border-purple-300 ring-2 ring-purple-400/20 shadow-xs'
@@ -711,27 +716,87 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
 
                 {/* Event Tags inside the day */}
-                <div className="space-y-1 mt-1 flex-1 overflow-y-auto max-h-[75px] scrollbar-thin">
+                <div className="space-y-1 mt-1 flex-1 overflow-y-auto max-h-[80px] scrollbar-thin">
                   {dayEvents.map((evt, eIdx) => {
                     const isRed = evt.statusColor === 'RED';
                     const isGreen = evt.statusColor === 'GREEN';
                     const isYellow = evt.statusColor === 'YELLOW';
 
                     const bgClass = isRed
-                      ? 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100'
+                      ? 'bg-rose-100/90 border-rose-300 text-rose-900 hover:bg-rose-200'
                       : isGreen
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
-                      : 'bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100';
+                      ? 'bg-emerald-100/90 border-emerald-300 text-emerald-900 hover:bg-emerald-200'
+                      : 'bg-amber-100/90 border-amber-300 text-amber-900 hover:bg-amber-200';
 
                     const dotClass = isRed
-                      ? 'bg-rose-500'
+                      ? 'bg-rose-600'
                       : isGreen
-                      ? 'bg-emerald-500'
+                      ? 'bg-emerald-600'
                       : 'bg-amber-500';
 
+                    const borderLineClass = isRed
+                      ? 'border-rose-400'
+                      : isGreen
+                      ? 'border-emerald-400'
+                      : 'border-amber-400';
+
+                    // If it's a Multi-Day connected range
+                    if (evt.isRange) {
+                      return (
+                        <button
+                          key={`${evt.item.id}-${eIdx}`}
+                          type="button"
+                          onClick={() =>
+                            setSelectedCalendarItem({
+                              type: evt.type,
+                              date: cell.dateStr,
+                              item: evt.item,
+                              statusColor: evt.statusColor,
+                              statusText: evt.statusText,
+                            })
+                          }
+                          className={`w-full text-left py-0.5 px-1.5 text-[10px] sm:text-[11px] font-bold leading-tight truncate transition-all cursor-pointer border flex items-center justify-between ${bgClass} ${
+                            evt.isRangeStart
+                              ? 'rounded-l-lg rounded-r-none border-r-0 pl-1.5 shadow-2xs'
+                              : evt.isRangeEnd
+                              ? 'rounded-r-lg rounded-l-none border-l-0 pr-1.5 shadow-2xs'
+                              : 'rounded-none border-x-0 border-t border-b'
+                          }`}
+                          title={`[ช่วงเวลา ${evt.rangeDayIndex + 1}/${evt.rangeTotalDays} วัน] ${evt.item.title}`}
+                        >
+                          <div className="flex items-center space-x-1 min-w-0 flex-1">
+                            {evt.isRangeStart ? (
+                              <>
+                                <span className={`w-2 h-2 rounded-full shrink-0 ${dotClass} ring-2 ring-white shadow-2xs`}></span>
+                                <span className="truncate font-semibold">{evt.item.title}</span>
+                              </>
+                            ) : evt.isRangeEnd ? (
+                              <>
+                                <span className="truncate font-semibold">{evt.item.title}</span>
+                                <span className={`w-2 h-2 rounded-full shrink-0 ${dotClass} ring-2 ring-white shadow-2xs ml-auto`}></span>
+                              </>
+                            ) : (
+                              <div className="flex items-center w-full justify-center space-x-1 text-[9px] opacity-85">
+                                <span className="truncate font-medium">{evt.item.title}</span>
+                              </div>
+                            )}
+                          </div>
+                          {/* Continuous bar connector indicator */}
+                          {evt.isRangeStart && (
+                            <span className="text-[9px] font-mono opacity-60 ml-0.5 shrink-0">━━▶</span>
+                          )}
+                          {evt.isRangeMiddle && (
+                            <span className="text-[8px] font-mono opacity-50 ml-0.5 shrink-0">━━━</span>
+                          )}
+                        </button>
+                      );
+                    }
+
+                    // Single-day event: 1 discrete dot
                     return (
                       <button
                         key={`${evt.item.id}-${eIdx}`}
+                        type="button"
                         onClick={() =>
                           setSelectedCalendarItem({
                             type: evt.type,
@@ -741,10 +806,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             statusText: evt.statusText,
                           })
                         }
-                        className={`w-full text-left px-1.5 py-1 rounded-md border text-[11px] font-medium leading-tight truncate flex items-center space-x-1 transition-all cursor-pointer ${bgClass}`}
-                        title={evt.item.title}
+                        className={`w-full text-left px-1.5 py-0.5 rounded-lg border text-[10px] sm:text-[11px] font-semibold leading-tight truncate flex items-center space-x-1.5 transition-all cursor-pointer shadow-2xs hover:scale-[1.01] ${bgClass}`}
+                        title={`[วันเดียว] ${evt.item.title}`}
                       >
-                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass}`}></span>
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${dotClass} ring-2 ring-white shadow-2xs`}></span>
                         <span className="truncate">{evt.item.title}</span>
                       </button>
                     );
@@ -753,6 +818,74 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             );
           })}
+        </div>
+
+        {/* Color & Style Legend (LEGENG) — Placed at the bottom of the calendar */}
+        <div className="mt-5 pt-4 border-t border-slate-100">
+          <div className="bg-slate-50/80 rounded-2xl p-3.5 sm:p-4 border border-slate-200/70 space-y-2.5">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <span className="text-slate-700 font-bold text-xs flex items-center space-x-1.5">
+                <span>📌</span>
+                <span>คำอธิบายสัญลักษณ์และสีปฏิทิน (LEGENG)</span>
+              </span>
+              <span className="text-[11px] text-slate-400">
+                คลิกที่รายการในปฏิทินเพื่อดูรายละเอียดเพิ่มเติม
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 border-t border-slate-200/60 text-xs">
+              {/* Part 1: Color Meanings */}
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">1. ความหมายของสี:</p>
+                <div className="flex flex-col space-y-1">
+                  <div className="flex items-center space-x-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-rose-200 shrink-0"></span>
+                    <span className="text-slate-700">
+                      <strong className="text-rose-700">สีแดง:</strong> {isAdmin ? 'งานที่ยังส่งไม่ครบทุกคน' : 'มีงานต้องส่ง / งานค้างส่ง'}
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-200 shrink-0"></span>
+                    <span className="text-slate-700">
+                      <strong className="text-emerald-700">สีเขียว:</strong> {isAdmin ? 'สมาชิกส่งครบทุกคนแล้ว' : 'ส่งงานเรียบร้อยแล้ว'}
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-amber-200 shrink-0"></span>
+                    <span className="text-slate-700">
+                      <strong className="text-amber-700">สีเหลือง:</strong> ประกาศแจ้งเตือนเพื่อทราบ / วันสำคัญ
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Part 2: Timeline Formats (Single day vs Multi-day Range) */}
+              <div className="space-y-1.5 md:border-l md:border-slate-200 md:pl-4">
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">2. ลักษณะการแสดงผล:</p>
+                <div className="flex flex-col space-y-1.5">
+                  <div className="flex items-center space-x-2">
+                    <div className="px-2 py-0.5 rounded-lg bg-purple-100 border border-purple-300 text-purple-900 text-[10px] font-bold inline-flex items-center space-x-1 shrink-0">
+                      <span className="w-1.5 h-1.5 rounded-full bg-purple-600"></span>
+                      <span>● 1 จุด</span>
+                    </div>
+                    <span className="text-slate-700">
+                      <strong>วันเดียว:</strong> แสดง 1 จุดเดี่ยว สำหรับกำหนดส่งวันเดียว
+                    </span>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <div className="px-2 py-0.5 rounded-md bg-purple-100 border-y border-purple-300 text-purple-900 text-[10px] font-bold inline-flex items-center space-x-1 shrink-0">
+                      <span className="w-1.5 h-1.5 rounded-full bg-purple-600"></span>
+                      <span>━━━━▶</span>
+                    </div>
+                    <span className="text-slate-700">
+                      <strong>ช่วงเวลา (2-3 วันขึ้นไป):</strong> จุดเชื่อมกันเป็นแถบยาวต่อเนื่อง
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

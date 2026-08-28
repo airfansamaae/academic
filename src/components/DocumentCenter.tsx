@@ -17,6 +17,7 @@ import {
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
+  Paperclip,
 } from 'lucide-react';
 import { User, DocumentItem, DocumentCategory } from '../types';
 import {
@@ -629,71 +630,74 @@ ${doc.description || 'เอกสารศูนย์วิชาการพ�
                     ไม่พบรายการเอกสารในหมวดหมู่นี้
                   </div>
                 ) : (
-                  /* Easy-to-read List Mode */
+                  /* Easy-to-read Minimal List Mode */
                   <div className="divide-y divide-slate-100 border border-slate-200/80 rounded-2xl overflow-hidden shadow-2xs">
                     {group.docs.map((doc) => {
                       const isSampleDoc = doc.category === 'SAMPLE_DOC';
                       return (
                         <div
                           key={doc.id}
-                          className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white hover:bg-slate-50/90 gap-3 transition-colors"
+                          className="flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:px-4 sm:py-3 bg-white hover:bg-slate-50/90 gap-2.5 transition-colors"
                         >
-                          <div className="flex items-start space-x-3.5 min-w-0 flex-1">
-                            <div className="w-10 h-10 rounded-xl bg-slate-100/90 border border-slate-200 flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
+                          <div className="flex items-center space-x-3 min-w-0 flex-1">
+                            <div className="w-8 h-8 rounded-lg bg-slate-100/90 border border-slate-200 flex items-center justify-center shrink-0 shadow-2xs">
                               {doc.fileType === 'PDF' ? (
-                                <FileText className="w-5 h-5 text-rose-500" />
+                                <FileText className="w-4 h-4 text-rose-500" />
                               ) : doc.fileType === 'XLSX' || doc.fileType === 'XLS' ? (
-                                <FileSpreadsheet className="w-5 h-5 text-emerald-500" />
+                                <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
                               ) : (
-                                <File className="w-5 h-5 text-purple-500" />
+                                <File className="w-4 h-4 text-purple-500" />
                               )}
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center space-x-2 flex-wrap gap-1">
                                 <span
-                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-md border shrink-0 ${
+                                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${
                                     isSampleDoc
                                       ? 'bg-amber-50 text-amber-700 border-amber-200'
                                       : 'bg-purple-50 text-purple-700 border-purple-200'
                                   }`}
                                 >
-                                  {isSampleDoc ? 'เอกสารตัวอย่าง' : 'หนังสือคำสั่ง'}
+                                  {isSampleDoc ? 'ตัวอย่าง' : 'คำสั่ง'}
                                 </span>
-                                <h4 className="text-sm font-bold text-slate-900 leading-snug">
+                                <h4 className="text-xs sm:text-sm font-bold text-slate-900 leading-snug truncate">
                                   {doc.title}
                                 </h4>
                               </div>
                               {doc.description && (
-                                <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+                                <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
                                   {doc.description}
                                 </p>
                               )}
-                              <p className="text-[11px] text-slate-400 mt-1 flex items-center space-x-2">
-                                <span>ไฟล์: <strong className="text-slate-600 font-medium">{doc.fileName}</strong></span>
+                              <div className="flex items-center space-x-2 text-[10px] text-slate-400 mt-1">
+                                <span className="inline-flex items-center space-x-1 font-mono text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
+                                  <Paperclip className="w-2.5 h-2.5 text-slate-400" />
+                                  <span className="max-w-[140px] truncate">{doc.fileName}</span>
+                                </span>
                                 <span>•</span>
-                                <span>ขนาด: <span className="font-mono text-slate-500">{doc.fileSize}</span></span>
-                              </p>
+                                <span className="font-mono text-slate-500">{doc.fileSize}</span>
+                              </div>
                             </div>
                           </div>
 
-                          <div className="flex items-center space-x-2 shrink-0 self-end sm:self-center">
+                          <div className="flex items-center space-x-1.5 shrink-0 self-end sm:self-center">
                             {isAdmin && (
-                              <div className="flex items-center space-x-1 mr-1">
+                              <div className="flex items-center space-x-0.5 mr-0.5">
                                 <button
                                   type="button"
                                   onClick={() => handleOpenEdit(doc)}
-                                  className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors cursor-pointer"
+                                  className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
                                   title="แก้ไขข้อมูลเอกสาร"
                                 >
-                                  <Edit3 className="w-4 h-4" />
+                                  <Edit3 className="w-3.5 h-3.5" />
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteDoc(doc.id)}
-                                  className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                                   title="ลบเอกสาร"
                                 >
-                                  <Trash2 className="w-4 h-4" />
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               </div>
                             )}
@@ -701,9 +705,10 @@ ${doc.description || 'เอกสารศูนย์วิชาการพ�
                             <button
                               type="button"
                               onClick={() => handleDownload(doc)}
-                              className="inline-flex items-center space-x-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer active:scale-95 whitespace-nowrap"
+                              className="inline-flex items-center space-x-1 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold shadow-2xs transition-all cursor-pointer active:scale-95 whitespace-nowrap"
+                              title={`ดาวน์โหลด ${doc.fileName}`}
                             >
-                              <Download className="w-4 h-4" />
+                              <Download className="w-3.5 h-3.5" />
                               <span>ดาวน์โหลด</span>
                             </button>
                           </div>
