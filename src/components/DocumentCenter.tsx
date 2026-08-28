@@ -444,71 +444,120 @@ ${doc.description || 'เอกสารศูนย์วิชาการพ�
         </div>
 
         {/* Category Selector Tabs for Members & Admin */}
-        <div className="pt-4 flex flex-wrap items-center gap-2 border-b border-slate-100 pb-4">
-          <div className="flex items-center space-x-1 text-xs font-bold text-slate-500 mr-2">
-            <Filter className="w-3.5 h-3.5" />
-            <span>หมวดหมู่:</span>
+        <div className="pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          <div className="flex items-center space-x-2">
+            <span className="text-xs font-bold text-slate-500">เลือกดู:</span>
+            {/* Small All Button */}
+            <button
+              type="button"
+              onClick={() => setSelectedCategory('ALL')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center space-x-1.5 ${
+                selectedCategory === 'ALL'
+                  ? 'bg-purple-900 text-white shadow-xs ring-2 ring-purple-300/30'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200'
+              }`}
+            >
+              <span>All</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-md ${
+                  selectedCategory === 'ALL'
+                    ? 'bg-purple-800 text-purple-200'
+                    : 'bg-slate-200 text-slate-700'
+                }`}
+              >
+                {categoryCounts.total}
+              </span>
+            </button>
           </div>
 
-          <button
-            onClick={() => setSelectedCategory('ALL')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center space-x-2 ${
-              selectedCategory === 'ALL'
-                ? 'bg-slate-900 text-white shadow-xs'
-                : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/80'
-            }`}
-          >
-            <span>ทั้งหมด</span>
-            <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-md ${
-                selectedCategory === 'ALL'
-                  ? 'bg-slate-700 text-slate-200'
-                  : 'bg-slate-200 text-slate-700'
-              }`}
-            >
-              {categoryCounts.total}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setSelectedCategory('SAMPLE_DOC')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center space-x-2 ${
-              selectedCategory === 'SAMPLE_DOC'
-                ? 'bg-amber-600 text-white shadow-xs'
-                : 'bg-amber-50/70 text-amber-800 hover:bg-amber-100/70 border border-amber-200/80'
-            }`}
-          >
-            <span>📄 1. เอกสารตัวอย่าง</span>
-            <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-md ${
+          {/* Large Prominent Category Buttons */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 flex-1 max-w-2xl">
+            <button
+              type="button"
+              onClick={() => setSelectedCategory('SAMPLE_DOC')}
+              className={`p-3 sm:px-4 sm:py-3 rounded-2xl text-left font-bold transition-all cursor-pointer flex items-center justify-between gap-3 border-2 ${
                 selectedCategory === 'SAMPLE_DOC'
-                  ? 'bg-amber-700 text-white'
-                  : 'bg-amber-200 text-amber-800'
+                  ? 'bg-purple-600 text-white border-purple-600 shadow-md ring-4 ring-purple-100'
+                  : 'bg-white text-slate-800 border-purple-200 hover:border-purple-400 hover:bg-purple-50/40 shadow-2xs'
               }`}
             >
-              {categoryCounts.sampleDocs}
-            </span>
-          </button>
+              <div className="flex items-center space-x-3 min-w-0">
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                    selectedCategory === 'SAMPLE_DOC'
+                      ? 'bg-white/20 text-white'
+                      : 'bg-amber-100 text-amber-800'
+                  }`}
+                >
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm sm:text-base font-bold leading-tight truncate">
+                    1. เอกสารตัวอย่าง
+                  </div>
+                  <div
+                    className={`text-[11px] font-normal truncate mt-0.5 ${
+                      selectedCategory === 'SAMPLE_DOC' ? 'text-purple-100' : 'text-slate-500'
+                    }`}
+                  >
+                    แบบฟอร์ม คู่มือวิชาการ
+                  </div>
+                </div>
+              </div>
+              <span
+                className={`text-xs px-2.5 py-1 rounded-full font-mono font-bold shrink-0 ${
+                  selectedCategory === 'SAMPLE_DOC'
+                    ? 'bg-white text-purple-700 shadow-2xs'
+                    : 'bg-amber-50 text-amber-800 border border-amber-200'
+                }`}
+              >
+                {categoryCounts.sampleDocs}
+              </span>
+            </button>
 
-          <button
-            onClick={() => setSelectedCategory('OFFICIAL_ORDER')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer inline-flex items-center space-x-2 ${
-              selectedCategory === 'OFFICIAL_ORDER'
-                ? 'bg-purple-600 text-white shadow-xs'
-                : 'bg-purple-50/70 text-purple-800 hover:bg-purple-100/70 border border-purple-200/80'
-            }`}
-          >
-            <span>📜 2. หนังสือคำสั่ง</span>
-            <span
-              className={`text-[10px] px-1.5 py-0.2 rounded-md ${
+            <button
+              type="button"
+              onClick={() => setSelectedCategory('OFFICIAL_ORDER')}
+              className={`p-3 sm:px-4 sm:py-3 rounded-2xl text-left font-bold transition-all cursor-pointer flex items-center justify-between gap-3 border-2 ${
                 selectedCategory === 'OFFICIAL_ORDER'
-                  ? 'bg-purple-700 text-white'
-                  : 'bg-purple-200 text-purple-800'
+                  ? 'bg-purple-600 text-white border-purple-600 shadow-md ring-4 ring-purple-100'
+                  : 'bg-white text-slate-800 border-purple-200 hover:border-purple-400 hover:bg-purple-50/40 shadow-2xs'
               }`}
             >
-              {categoryCounts.officialOrders}
-            </span>
-          </button>
+              <div className="flex items-center space-x-3 min-w-0">
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                    selectedCategory === 'OFFICIAL_ORDER'
+                      ? 'bg-white/20 text-white'
+                      : 'bg-purple-100 text-purple-800'
+                  }`}
+                >
+                  <File className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm sm:text-base font-bold leading-tight truncate">
+                    2. หนังสือคำสั่ง
+                  </div>
+                  <div
+                    className={`text-[11px] font-normal truncate mt-0.5 ${
+                      selectedCategory === 'OFFICIAL_ORDER' ? 'text-purple-100' : 'text-slate-500'
+                    }`}
+                  >
+                    ระเบียบปฏิบัติราชการ
+                  </div>
+                </div>
+              </div>
+              <span
+                className={`text-xs px-2.5 py-1 rounded-full font-mono font-bold shrink-0 ${
+                  selectedCategory === 'OFFICIAL_ORDER'
+                    ? 'bg-white text-purple-700 shadow-2xs'
+                    : 'bg-purple-50 text-purple-800 border border-purple-200'
+                }`}
+              >
+                {categoryCounts.officialOrders}
+              </span>
+            </button>
+          </div>
         </div>
 
         {/* Search Toolbar */}

@@ -15,8 +15,6 @@ import {
   Edit3,
   Check,
   X,
-  LayoutGrid,
-  List as ListIcon,
   FolderOpen,
   Eye,
   ExternalLink,
@@ -79,16 +77,6 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
   const safeTasks = Array.isArray(tasks) ? tasks : [];
   const safeAnnouncements = Array.isArray(announcements) ? announcements : [];
   const safeSubmissions = Array.isArray(submissions) ? submissions : [];
-
-  // View Mode: 'CARD' (การ์ด) vs 'LIST' (รายการ)
-  const [viewMode, setViewMode] = useState<'CARD' | 'LIST'>(() => {
-    return (localStorage.getItem('academic_task_view_mode') as 'CARD' | 'LIST') || 'CARD';
-  });
-
-  const handleToggleViewMode = (mode: 'CARD' | 'LIST') => {
-    setViewMode(mode);
-    localStorage.setItem('academic_task_view_mode', mode);
-  };
 
   // Helper sort: Nearest due date first (ascending)
   const sortByDueDateAsc = (a: { dueDate?: string }, b: { dueDate?: string }) => {
@@ -542,38 +530,8 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
               </div>
             </div>
 
-            {/* View Mode Toggle & Add Task Button */}
+            {/* Admin Actions */}
             <div className="flex items-center flex-wrap gap-2.5">
-              {/* Card / List Switcher */}
-              <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => handleToggleViewMode('CARD')}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center space-x-1.5 ${
-                    viewMode === 'CARD'
-                      ? 'bg-white text-purple-700 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                  title="แสดงผลแบบการ์ด"
-                >
-                  <LayoutGrid className="w-3.5 h-3.5" />
-                  <span>การ์ด</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleToggleViewMode('LIST')}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center space-x-1.5 ${
-                    viewMode === 'LIST'
-                      ? 'bg-white text-purple-700 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                  title="แสดงผลแบบรายการ"
-                >
-                  <ListIcon className="w-3.5 h-3.5" />
-                  <span>รายการ</span>
-                </button>
-              </div>
-
               {/* Admin Create Button */}
               <button
                 type="button"
@@ -594,7 +552,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                 onClick={() => setAdminListFilter('ALL')}
                 className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer ${
                   adminListFilter === 'ALL'
-                    ? 'bg-white text-slate-800 shadow-2xs'
+                    ? 'bg-white text-purple-900 shadow-2xs'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
@@ -609,7 +567,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
-                <span>📝 มอบหมายงาน (สีม่วง)</span>
+                <span>📝 มอบหมายงาน</span>
                 <span className="bg-purple-100 text-purple-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
                   {safeTasks.length}
                 </span>
@@ -619,12 +577,12 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                 onClick={() => setAdminListFilter('ANNOUNCEMENT')}
                 className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center space-x-1.5 ${
                   adminListFilter === 'ANNOUNCEMENT'
-                    ? 'bg-white text-amber-800 shadow-2xs'
+                    ? 'bg-white text-purple-700 shadow-2xs'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
                 <span>📢 ประกาศแจ้งเพื่อทราบ</span>
-                <span className="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                <span className="bg-purple-100 text-purple-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
                   {safeAnnouncements.length}
                 </span>
               </button>
@@ -644,10 +602,10 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
 
           {/* Assigned Tasks Section (Admin) */}
           {(adminListFilter === 'ALL' || adminListFilter === 'TASK') && (
-            <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-xs space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+            <div className="bg-white rounded-2xl border border-purple-100 p-4 sm:p-5 shadow-xs space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-purple-100/70">
                 <div className="flex items-center space-x-2">
-                  <span className="text-base font-bold text-slate-800">
+                  <span className="text-sm sm:text-base font-bold text-slate-800">
                     รายการงานที่มอบหมาย (เรียงตามกำหนดส่งใกล้ที่สุดอยู่บน)
                   </span>
                   <span className="text-xs font-bold bg-purple-50 text-purple-700 px-2 py-0.5 rounded-md border border-purple-100">
@@ -658,172 +616,97 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                   <button
                     type="button"
                     onClick={handleDeleteAllTasks}
-                    className="px-3 py-1.5 text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl transition-all flex items-center space-x-1.5 cursor-pointer shadow-2xs"
+                    className="px-2.5 py-1 text-xs font-bold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-all flex items-center space-x-1 cursor-pointer shadow-2xs"
                     title="ลบงานมอบหมายทั้งหมดออกจากระบบ"
                   >
-                    <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                    <Trash2 className="w-3 h-3 text-red-500" />
                     <span>ลบงานทั้งหมด ({adminSortedTasks.length})</span>
                   </button>
                 )}
               </div>
 
               {adminSortedTasks.length === 0 ? (
-                <div className="py-8 text-center text-slate-400 text-xs">
+                <div className="py-6 text-center text-slate-400 text-xs">
                   ยังไม่มีรายการงานที่มอบหมาย กดปุ่มด้านบนเพื่อสร้างงานใหม่
                 </div>
-              ) : viewMode === 'CARD' ? (
-                /* --- Admin Card View --- */
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {adminSortedTasks.map((task, idx) => {
-                    const taskSubmissions = safeSubmissions.filter((s) => s && s.taskId === task.id);
-                    const isLate = isPastDue(task.dueDate);
-                    return (
-                      <div
-                        key={task.id}
-                        className={`p-5 rounded-3xl border transition-all flex flex-col justify-between space-y-4 hover:shadow-md ${
-                          idx === 0
-                            ? 'border-purple-300 bg-purple-50/20 ring-2 ring-purple-100'
-                            : 'border-purple-200 bg-white hover:border-purple-400'
-                        }`}
-                      >
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center space-x-1.5">
-                              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
-                                📝 มอบหมายงาน
-                              </span>
-                              {idx === 0 && (
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-600 text-white shadow-2xs">
-                                  กำหนดส่งใกล้สุด
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center space-x-1 text-xs font-mono font-bold text-slate-700 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
-                              <Calendar className="w-3.5 h-3.5 text-purple-600" />
-                              <span>{formatThaiDateRange(task.startDate || task.dueDate, task.dueDate)}</span>
-                            </div>
-                          </div>
-
-                          <h3 className="text-base font-bold text-slate-900 leading-snug">
-                            {task.title}
-                          </h3>
-                          <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
-                            {task.description || 'ไม่มีคำอธิบายเพิ่มเติม'}
-                          </p>
-                        </div>
-
-                        <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                          {/* Green indicator for submissions */}
-                          <span className="inline-flex items-center space-x-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>ส่งงานแล้ว {taskSubmissions.length} คน</span>
-                          </span>
-
-                          <div className="flex items-center space-x-1">
-                            {task.gDriveFolderUrl && (
-                              <a
-                                href={task.gDriveFolderUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors"
-                                title="เปิดโฟลเดอร์ Google Drive"
-                              >
-                                <HardDrive className="w-4 h-4" />
-                              </a>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEditTask(task)}
-                              className="p-1.5 text-slate-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
-                              title="แก้ไขงาน"
-                            >
-                              <Edit3 className="w-4 h-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteTask(task.id)}
-                              className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                              title="ลบงาน"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
               ) : (
-                /* --- Admin List (Table) View --- */
+                /* --- Admin Compact List (Table) View --- */
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs sm:text-sm">
+                  <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="border-b border-purple-100 bg-purple-50/50 text-purple-900">
-                        <th className="py-3 px-3 rounded-l-xl font-bold">หมวดหมู่ & หัวข้องาน</th>
-                        <th className="py-3 px-3 font-bold">กำหนดส่ง (DD/MM/YYYY)</th>
-                        <th className="py-3 px-3 font-bold">Google Drive</th>
-                        <th className="py-3 px-3 font-bold">สถานะการส่งงาน (สีเขียว)</th>
-                        <th className="py-3 px-3 rounded-r-xl font-bold text-right">การจัดการ</th>
+                      <tr className="border-b border-purple-100 bg-purple-50/60 text-purple-900">
+                        <th className="py-2.5 px-3 rounded-l-lg font-bold">หมวดหมู่ & หัวข้องาน</th>
+                        <th className="py-2.5 px-3 font-bold">กำหนดส่ง (DD/MM/YYYY)</th>
+                        <th className="py-2.5 px-3 font-bold">Google Drive</th>
+                        <th className="py-2.5 px-3 font-bold">สถานะการส่งงาน (สีเขียว)</th>
+                        <th className="py-2.5 px-3 rounded-r-lg font-bold text-right">การจัดการ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {adminSortedTasks.map((task) => {
+                      {adminSortedTasks.map((task, idx) => {
                         const taskSubmissions = safeSubmissions.filter((s) => s && s.taskId === task.id);
                         return (
-                          <tr key={task.id} className="hover:bg-purple-50/20 transition-colors">
-                            <td className="py-3.5 px-3">
+                          <tr key={task.id} className="hover:bg-purple-50/30 transition-colors">
+                            <td className="py-2.5 px-3">
                               <div className="flex items-center space-x-2">
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 border border-purple-200 whitespace-nowrap">
                                   งานมอบหมาย
                                 </span>
+                                {idx === 0 && (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-600 text-white whitespace-nowrap">
+                                    ใกล้สุด
+                                  </span>
+                                )}
                                 <p className="font-bold text-slate-800 line-clamp-1">{task.title}</p>
                               </div>
-                              <p className="text-xs text-slate-500 line-clamp-1 mt-0.5 pl-0.5">
-                                {task.description || 'ไม่มีคำอธิบายเพิ่มเติม'}
-                              </p>
+                              {task.description && (
+                                <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5 pl-0.5">
+                                  {task.description}
+                                </p>
+                              )}
                             </td>
-                            <td className="py-3.5 px-3 whitespace-nowrap font-mono font-semibold text-slate-800">
+                            <td className="py-2.5 px-3 whitespace-nowrap font-mono font-semibold text-slate-800">
                               {formatThaiDateRange(task.startDate || task.dueDate, task.dueDate)}
                             </td>
-                            <td className="py-3.5 px-3 whitespace-nowrap">
+                            <td className="py-2.5 px-3 whitespace-nowrap">
                               {task.gDriveFolderUrl ? (
                                 <a
                                   href={task.gDriveFolderUrl}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-lg transition-colors inline-flex items-center space-x-1.5"
+                                  className="text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-md transition-colors inline-flex items-center space-x-1"
                                   title="เปิดโฟลเดอร์งานนี้ใน Google Drive"
                                 >
                                   <HardDrive className="w-3.5 h-3.5 text-emerald-600" />
                                   <span>เปิดโฟลเดอร์</span>
                                 </a>
                               ) : (
-                                <span className="text-xs text-slate-400">-</span>
+                                <span className="text-slate-400">-</span>
                               )}
                             </td>
-                            <td className="py-3.5 px-3 whitespace-nowrap">
-                              <span className="inline-flex items-center space-x-1 text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              <span className="inline-flex items-center space-x-1 text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
                                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                                 <span>ส่งแล้ว {taskSubmissions.length} คน</span>
                               </span>
                             </td>
-                            <td className="py-3.5 px-3 text-right whitespace-nowrap">
+                            <td className="py-2.5 px-3 text-right whitespace-nowrap">
                               <div className="inline-flex items-center space-x-1">
                                 <button
                                   type="button"
                                   onClick={() => handleOpenEditTask(task)}
-                                  className="p-1.5 text-slate-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
+                                  className="p-1 text-slate-500 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
                                   title="แก้ไขงาน"
                                 >
-                                  <Edit3 className="w-4 h-4" />
+                                  <Edit3 className="w-3.5 h-3.5" />
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteTask(task.id)}
-                                  className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                  className="p-1 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                                   title="ลบงาน"
                                 >
-                                  <Trash2 className="w-4 h-4" />
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               </div>
                             </td>
@@ -839,85 +722,38 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
 
           {/* Announcements Section (Admin) */}
           {(adminListFilter === 'ALL' || adminListFilter === 'ANNOUNCEMENT') && (
-            <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-xs space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div className="bg-white rounded-2xl border border-purple-100 p-4 sm:p-5 shadow-xs space-y-3">
+              <div className="flex items-center justify-between pb-2.5 border-b border-purple-100/70">
                 <div className="flex items-center space-x-2">
-                  <span className="text-base font-bold text-slate-800">
+                  <span className="text-sm sm:text-base font-bold text-slate-800">
                     รายการประกาศแจ้งเพื่อทราบทั้งหมด
                   </span>
-                  <span className="text-xs font-bold bg-amber-50 text-amber-700 px-2 py-0.5 rounded-md border border-amber-100">
+                  <span className="text-xs font-bold bg-purple-50 text-purple-700 px-2 py-0.5 rounded-md border border-purple-100">
                     {adminSortedAnnouncements.length} รายการ
                   </span>
                 </div>
               </div>
 
               {adminSortedAnnouncements.length === 0 ? (
-                <div className="py-8 text-center text-slate-400 text-xs">
+                <div className="py-6 text-center text-slate-400 text-xs">
                   ยังไม่มีประกาศแจ้งเพื่อทราบ กดปุ่มด้านบนเพื่อสร้างประกาศใหม่
-                </div>
-              ) : viewMode === 'CARD' ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {adminSortedAnnouncements.map((ann) => (
-                    <div
-                      key={ann.id}
-                      className="p-4 rounded-2xl border border-amber-200 bg-amber-50/40 flex items-start justify-between gap-3 hover:border-amber-300 transition-colors"
-                    >
-                      <div className="space-y-1.5 flex-1 min-w-0">
-                        <div className="flex items-center space-x-2">
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-200">
-                            {ann.type === 'HOLIDAY'
-                              ? '🏖️ วันหยุดราชการ'
-                              : ann.type === 'ACTIVITY'
-                              ? '🎯 กิจกรรม/การประชุม'
-                              : '📢 ข่าวสารทั่วไป'}
-                          </span>
-                          <span className="text-xs font-mono font-bold text-amber-900">
-                            {formatThaiDateRange(ann.date, ann.endDate || ann.date)}
-                          </span>
-                        </div>
-                        <p className="text-sm font-bold text-slate-900 line-clamp-1">{ann.title}</p>
-                        <p className="text-xs text-slate-600 line-clamp-2">
-                          {ann.details || 'ไม่มีรายละเอียดเพิ่มเติม'}
-                        </p>
-                      </div>
-
-                      <div className="inline-flex items-center space-x-1 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEditAnnouncement(ann)}
-                          className="p-1.5 text-slate-400 hover:text-amber-700 hover:bg-amber-100 rounded-lg transition-colors cursor-pointer"
-                          title="แก้ไขประกาศ"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteAnnouncement(ann.id)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                          title="ลบประกาศ"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs sm:text-sm">
+                  <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="border-b border-amber-100 bg-amber-50/50 text-amber-900">
-                        <th className="py-3 px-3 rounded-l-xl font-bold">ประเภท & หัวข้อประกาศ</th>
-                        <th className="py-3 px-3 font-bold">วันที่ประกาศ / จัดกิจกรรม</th>
-                        <th className="py-3 px-3 font-bold">รายละเอียด</th>
-                        <th className="py-3 px-3 rounded-r-xl font-bold text-right">การจัดการ</th>
+                      <tr className="border-b border-purple-100 bg-purple-50/60 text-purple-900">
+                        <th className="py-2.5 px-3 rounded-l-lg font-bold">ประเภท & หัวข้อประกาศ</th>
+                        <th className="py-2.5 px-3 font-bold">วันที่ประกาศ / จัดกิจกรรม</th>
+                        <th className="py-2.5 px-3 font-bold">รายละเอียด</th>
+                        <th className="py-2.5 px-3 rounded-r-lg font-bold text-right">การจัดการ</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {adminSortedAnnouncements.map((ann) => (
-                        <tr key={ann.id} className="hover:bg-amber-50/20 transition-colors">
-                          <td className="py-3.5 px-3 whitespace-nowrap">
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-200">
+                        <tr key={ann.id} className="hover:bg-purple-50/30 transition-colors">
+                          <td className="py-2.5 px-3 whitespace-nowrap">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-100 text-purple-900 border border-purple-200">
                               {ann.type === 'HOLIDAY'
                                 ? '🏖️ วันหยุด'
                                 : ann.type === 'ACTIVITY'
@@ -926,27 +762,29 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                             </span>
                             <span className="ml-2 font-bold text-slate-800">{ann.title}</span>
                           </td>
-                          <td className="py-3.5 px-3 whitespace-nowrap font-mono font-semibold text-slate-700">
+                          <td className="py-2.5 px-3 whitespace-nowrap font-mono font-semibold text-slate-700">
                             {formatThaiDateRange(ann.date, ann.endDate || ann.date)}
                           </td>
-                          <td className="py-3.5 px-3 text-slate-600 max-w-xs truncate">
+                          <td className="py-2.5 px-3 text-slate-600 max-w-xs truncate">
                             {ann.details || '-'}
                           </td>
-                          <td className="py-3.5 px-3 text-right whitespace-nowrap">
+                          <td className="py-2.5 px-3 text-right whitespace-nowrap">
                             <div className="inline-flex items-center space-x-1">
                               <button
                                 type="button"
                                 onClick={() => handleOpenEditAnnouncement(ann)}
-                                className="p-1.5 text-slate-400 hover:text-amber-700 hover:bg-amber-100 rounded-lg transition-colors cursor-pointer"
+                                className="p-1 text-slate-400 hover:text-purple-700 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
+                                title="แก้ไขประกาศ"
                               >
-                                <Edit3 className="w-4 h-4" />
+                                <Edit3 className="w-3.5 h-3.5" />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleDeleteAnnouncement(ann.id)}
-                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                title="ลบประกาศ"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
                           </td>
@@ -1192,154 +1030,54 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
               </div>
             </div>
 
-            {/* View Mode Toggle & Stat Badges */}
-            <div className="flex items-center flex-wrap gap-2.5">
-              {/* Card / List Switcher */}
-              <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => handleToggleViewMode('CARD')}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center space-x-1.5 ${
-                    viewMode === 'CARD'
-                      ? 'bg-white text-purple-700 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                  title="แสดงผลแบบการ์ด"
-                >
-                  <LayoutGrid className="w-3.5 h-3.5" />
-                  <span>การ์ด</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleToggleViewMode('LIST')}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center space-x-1.5 ${
-                    viewMode === 'LIST'
-                      ? 'bg-white text-purple-700 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                  title="แสดงผลแบบรายการ"
-                >
-                  <ListIcon className="w-3.5 h-3.5" />
-                  <span>รายการ</span>
-                </button>
-              </div>
-
-              {/* Status summary counters */}
-              <div className="flex items-center space-x-2">
-                <span className="inline-flex items-center space-x-1.5 bg-purple-50 text-purple-800 border border-purple-200 px-3 py-1.5 rounded-xl font-bold text-xs">
-                  <Clock className="w-3.5 h-3.5 text-purple-600" />
-                  <span>ยังไม่ส่ง: {memberPendingTasks.length}</span>
-                </span>
-                <span className="inline-flex items-center space-x-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-xl font-bold text-xs">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>ส่งแล้ว: {memberSubmittedTasksWithSubmissions.length}</span>
-                </span>
-              </div>
+            {/* Stat Badges */}
+            <div className="flex items-center flex-wrap gap-2">
+              <span className="inline-flex items-center space-x-1.5 bg-purple-50 text-purple-800 border border-purple-200 px-3 py-1.5 rounded-xl font-bold text-xs">
+                <Clock className="w-3.5 h-3.5 text-purple-600" />
+                <span>ยังไม่ส่ง: {memberPendingTasks.length}</span>
+              </span>
+              <span className="inline-flex items-center space-x-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-xl font-bold text-xs">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>ส่งแล้ว: {memberSubmittedTasksWithSubmissions.length}</span>
+              </span>
             </div>
           </div>
 
           {/* ================= TOP SECTION: PENDING TASKS (ยังไม่ส่งงาน : สีม่วง) ================= */}
-          <div className="bg-white rounded-3xl border border-purple-200/80 p-5 sm:p-6 shadow-xs space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-purple-100">
-              <div className="flex items-center space-x-2.5">
-                <div className="w-3 h-3 rounded-full bg-purple-600 ring-4 ring-purple-100"></div>
-                <h2 className="text-base font-bold text-purple-950">
+          <div className="bg-white rounded-2xl border border-purple-200 p-4 sm:p-5 shadow-xs space-y-3">
+            <div className="flex items-center justify-between pb-2.5 border-b border-purple-100">
+              <div className="flex items-center space-x-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-purple-600 ring-4 ring-purple-100"></div>
+                <h2 className="text-sm sm:text-base font-bold text-purple-950">
                   งานที่ยังไม่ส่ง (ยังไม่ส่งงาน : สีม่วง) — เรียงตามกำหนดส่งใกล้ที่สุดอยู่บน
                 </h2>
-                <span className="text-xs font-bold bg-purple-100 text-purple-800 px-2.5 py-0.5 rounded-full border border-purple-200">
+                <span className="text-xs font-bold bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full border border-purple-200">
                   {memberPendingTasks.length} รายการ
                 </span>
               </div>
-              <span className="text-xs font-medium text-purple-700 bg-purple-50 px-2.5 py-1 rounded-lg border border-purple-100 hidden sm:inline-block">
+              <span className="text-xs font-medium text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-lg border border-purple-100 hidden sm:inline-block">
                 🔔 กรุณาส่งงานก่อนเลยกำหนด
               </span>
             </div>
 
             {memberPendingTasks.length === 0 ? (
-              <div className="py-8 text-center text-slate-400 space-y-2">
-                <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-full flex items-center justify-center mx-auto border border-purple-200">
-                  <CheckCircle2 className="w-6 h-6" />
+              <div className="py-6 text-center text-slate-400 space-y-1.5">
+                <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-full flex items-center justify-center mx-auto border border-purple-200">
+                  <CheckCircle2 className="w-5 h-5" />
                 </div>
                 <p className="text-sm font-bold text-slate-700">ไม่มีงานค้างส่งในส่วนนี้</p>
                 <p className="text-xs text-slate-400">คุณได้ส่งงานทุกรายการครบถ้วนแล้ว ดูรายการด้านล่าง</p>
               </div>
-            ) : viewMode === 'CARD' ? (
-              /* --- Member Pending Tasks: CARD VIEW --- */
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {memberPendingTasks.map((task, idx) => {
-                  const isLate = isPastDue(task.dueDate);
-                  return (
-                    <div
-                      key={task.id}
-                      className={`p-5 rounded-3xl border transition-all flex flex-col justify-between space-y-4 hover:shadow-md ${
-                        isLate
-                          ? 'border-rose-300 bg-rose-50/30 hover:border-rose-400 ring-2 ring-rose-100'
-                          : idx === 0
-                          ? 'border-purple-400 bg-purple-50/30 hover:border-purple-500 ring-2 ring-purple-100'
-                          : 'border-purple-200 bg-purple-50/10 hover:border-purple-400'
-                      }`}
-                    >
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center space-x-1.5">
-                            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
-                              🟣 ยังไม่ส่งงาน
-                            </span>
-                            {idx === 0 && !isLate && (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-600 text-white shadow-2xs">
-                                กำหนดส่งใกล้สุด 🔥
-                              </span>
-                            )}
-                            {isLate && (
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-rose-600 text-white shadow-2xs">
-                                เลยกำหนดส่ง
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="flex items-center space-x-1 text-xs font-mono font-bold text-slate-700 bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs">
-                            <Calendar className="w-3.5 h-3.5 text-purple-600" />
-                            <span>{formatThaiDateRange(task.startDate || task.dueDate, task.dueDate)}</span>
-                          </div>
-                        </div>
-
-                        <h3 className="text-base font-bold text-slate-900 leading-snug">
-                          {task.title}
-                        </h3>
-
-                        <p className="text-xs text-slate-600 line-clamp-3 leading-relaxed">
-                          {task.description || 'ไม่มีคำอธิบายเพิ่มเติมจากผู้ดูแลระบบ'}
-                        </p>
-                      </div>
-
-                      <div className="pt-3 border-t border-purple-100 flex items-center justify-between gap-2">
-                        <div className="text-[11px] text-slate-500 truncate">
-                          โดย: <span className="font-semibold text-slate-700">{task.assignedBy}</span>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => handleOpenSubmissionModal(task)}
-                          className="btn-glow-purple px-4 py-2 text-xs sm:text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition-all shadow-md inline-flex items-center space-x-1.5 cursor-pointer active:scale-95 shrink-0"
-                        >
-                          <Send className="w-3.5 h-3.5" />
-                          <span>ส่งงานทันที</span>
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
             ) : (
-              /* --- Member Pending Tasks: LIST VIEW --- */
+              /* --- Member Pending Tasks: Compact LIST VIEW --- */
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs sm:text-sm">
+                <table className="w-full text-left text-xs">
                   <thead>
                     <tr className="border-b border-purple-100 bg-purple-50/70 text-purple-900">
-                      <th className="py-3 px-3 rounded-l-xl font-bold">สถานะ & หัวข้องาน</th>
-                      <th className="py-3 px-3 font-bold">กำหนดส่ง (DD/MM/YYYY)</th>
-                      <th className="py-3 px-3 font-bold">มอบหมายโดย</th>
-                      <th className="py-3 px-3 rounded-r-xl font-bold text-right">ดำเนินการ</th>
+                      <th className="py-2.5 px-3 rounded-l-lg font-bold">สถานะ & หัวข้องาน</th>
+                      <th className="py-2.5 px-3 font-bold">กำหนดส่ง (DD/MM/YYYY)</th>
+                      <th className="py-2.5 px-3 font-bold">มอบหมายโดย</th>
+                      <th className="py-2.5 px-3 rounded-r-lg font-bold text-right">ดำเนินการ</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-purple-50">
@@ -1347,38 +1085,40 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                       const isLate = isPastDue(task.dueDate);
                       return (
                         <tr key={task.id} className="hover:bg-purple-50/30 transition-colors">
-                          <td className="py-3.5 px-3">
+                          <td className="py-2.5 px-3">
                             <div className="flex items-center space-x-2">
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200 whitespace-nowrap">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 border border-purple-200 whitespace-nowrap">
                                 🟣 ยังไม่ส่ง
                               </span>
                               {idx === 0 && !isLate && (
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-purple-600 text-white">
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-600 text-white whitespace-nowrap">
                                   ใกล้สุด
                                 </span>
                               )}
                               {isLate && (
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-rose-600 text-white">
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-600 text-white whitespace-nowrap">
                                   เลยกำหนด
                                 </span>
                               )}
                               <p className="font-bold text-slate-800">{task.title}</p>
                             </div>
-                            <p className="text-xs text-slate-500 line-clamp-1 mt-0.5 pl-0.5">
-                              {task.description || 'ไม่มีคำอธิบายเพิ่มเติม'}
-                            </p>
+                            {task.description && (
+                              <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5 pl-0.5">
+                                {task.description}
+                              </p>
+                            )}
                           </td>
-                          <td className="py-3.5 px-3 whitespace-nowrap font-mono font-semibold text-purple-900">
+                          <td className="py-2.5 px-3 whitespace-nowrap font-mono font-semibold text-purple-900">
                             {formatThaiDateRange(task.startDate || task.dueDate, task.dueDate)}
                           </td>
-                          <td className="py-3.5 px-3 whitespace-nowrap text-slate-600">
+                          <td className="py-2.5 px-3 whitespace-nowrap text-slate-600">
                             {task.assignedBy || 'ผู้ดูแลระบบ'}
                           </td>
-                          <td className="py-3.5 px-3 text-right whitespace-nowrap">
+                          <td className="py-2.5 px-3 text-right whitespace-nowrap">
                             <button
                               type="button"
                               onClick={() => handleOpenSubmissionModal(task)}
-                              className="px-3.5 py-1.5 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition-all shadow-xs inline-flex items-center space-x-1.5 cursor-pointer"
+                              className="px-3 py-1.5 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-all shadow-xs inline-flex items-center space-x-1.5 cursor-pointer"
                             >
                               <Send className="w-3.5 h-3.5" />
                               <span>ส่งงาน</span>
@@ -1394,127 +1134,38 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
           </div>
 
           {/* ================= BOTTOM SECTION: SUBMITTED TASKS (ส่งงานแล้ว : สีเขียว) ================= */}
-          <div className="bg-white rounded-3xl border border-emerald-200/80 p-5 sm:p-6 shadow-xs space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-emerald-100">
-              <div className="flex items-center space-x-2.5">
-                <div className="w-3 h-3 rounded-full bg-emerald-600 ring-4 ring-emerald-100"></div>
-                <h2 className="text-base font-bold text-emerald-950">
-                  งานที่ส่งแล้ว (ส่งงานแล้ว : สีเขียว) — ย้ายมาอยู่ล่างสุด (สามารถแก้ไขเปลี่ยนชื่อและแนบไฟล์ใหม่ได้)
+          <div className="bg-white rounded-2xl border border-emerald-200 p-4 sm:p-5 shadow-xs space-y-3">
+            <div className="flex items-center justify-between pb-2.5 border-b border-emerald-100">
+              <div className="flex items-center space-x-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-emerald-600 ring-4 ring-emerald-100"></div>
+                <h2 className="text-sm sm:text-base font-bold text-emerald-950">
+                  งานที่ส่งแล้ว (ส่งงานแล้ว : สีเขียว) — ย้ายมาอยู่ล่างสุด (แก้ไขเปลี่ยนชื่อและแนบไฟล์ใหม่ได้)
                 </h2>
-                <span className="text-xs font-bold bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                <span className="text-xs font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-200">
                   {memberSubmittedTasksWithSubmissions.length} รายการ
                 </span>
               </div>
-              <span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100 hidden sm:inline-block">
+              <span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-100 hidden sm:inline-block">
                 ✨ คลิก "แก้ไขการส่งงาน" เพื่อเปลี่ยนชื่อหรืออัปโหลดไฟล์ใหม่
               </span>
             </div>
 
             {memberSubmittedTasksWithSubmissions.length === 0 ? (
-              <div className="py-8 text-center text-slate-400 space-y-2">
+              <div className="py-6 text-center text-slate-400 space-y-1.5">
                 <p className="text-sm font-bold text-slate-700">ยังไม่มีรายการงานที่ส่งแล้ว</p>
                 <p className="text-xs text-slate-400">เมื่อคุณส่งงาน รายการจะถูกย้ายมาแสดงที่ส่วนนี้โดยอัตโนมัติ</p>
               </div>
-            ) : viewMode === 'CARD' ? (
-              /* --- Member Submitted Tasks: CARD VIEW --- */
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {memberSubmittedTasksWithSubmissions.map(({ task, submission }) => {
-                  const fileCount = Array.isArray(submission.files) ? submission.files.length : 0;
-                  return (
-                    <div
-                      key={task.id}
-                      className="p-5 rounded-3xl border border-emerald-200 bg-emerald-50/20 transition-all flex flex-col justify-between space-y-4 hover:shadow-md hover:border-emerald-400"
-                    >
-                      <div className="space-y-2.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                            🟢 ส่งงานแล้ว
-                          </span>
-                          <div className="flex items-center space-x-1 text-xs font-mono font-bold text-emerald-800 bg-white px-2.5 py-1 rounded-lg border border-emerald-200">
-                            <Calendar className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>{formatThaiDateRange(task.startDate || task.dueDate, task.dueDate)}</span>
-                          </div>
-                        </div>
-
-                        <div>
-                          <p className="text-[11px] font-bold text-emerald-700 mb-0.5">
-                            หัวข้องานมอบหมาย: {task.title}
-                          </p>
-                          <h3 className="text-base font-bold text-slate-900 leading-snug">
-                            {submission.subject || task.title}
-                          </h3>
-                        </div>
-
-                        {submission.description && (
-                          <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed bg-white/70 p-2 rounded-xl border border-emerald-100">
-                            {submission.description}
-                          </p>
-                        )}
-
-                        {/* Files preview list */}
-                        <div className="space-y-1">
-                          <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
-                            <span className="flex items-center space-x-1">
-                              <Paperclip className="w-3 h-3 text-emerald-600" />
-                              <span>แนบแล้ว {fileCount} ไฟล์</span>
-                            </span>
-                          </div>
-                          {Array.isArray(submission.files) && submission.files.length > 0 && (
-                            <div className="flex flex-wrap gap-1">
-                              {submission.files.slice(0, 3).map((f, i) => (
-                                <a
-                                  key={f.id || i}
-                                  href={f.gDriveUrl || GDRIVE_FOLDER_URL}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-[10px] font-medium text-emerald-800 bg-white px-2 py-0.5 rounded-md border border-emerald-200 hover:bg-emerald-50 transition-colors truncate max-w-[140px] inline-flex items-center space-x-1"
-                                  title={f.name}
-                                >
-                                  <FileText className="w-3 h-3 text-emerald-600 shrink-0" />
-                                  <span className="truncate">{f.name}</span>
-                                </a>
-                              ))}
-                              {submission.files.length > 3 && (
-                                <span className="text-[10px] text-slate-400 self-center">
-                                  +{submission.files.length - 3} ไฟล์
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Edit Button */}
-                      <div className="pt-3 border-t border-emerald-100 flex items-center justify-between gap-2">
-                        <span className="text-[10px] text-emerald-700 font-medium">
-                          ส่งเมื่อ: {new Date(submission.submittedAt).toLocaleDateString('th-TH')}
-                        </span>
-
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEditSubmissionModal(task, submission)}
-                          className="px-3.5 py-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 rounded-xl transition-all inline-flex items-center space-x-1.5 cursor-pointer active:scale-95"
-                          title="แก้ไขเปลี่ยนชื่องาน หรืออัปโหลดไฟล์ใหม่"
-                        >
-                          <Edit3 className="w-3.5 h-3.5 text-emerald-700" />
-                          <span>แก้ไขการส่งงาน</span>
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
             ) : (
-              /* --- Member Submitted Tasks: LIST VIEW --- */
+              /* --- Member Submitted Tasks: Compact LIST VIEW --- */
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs sm:text-sm">
+                <table className="w-full text-left text-xs">
                   <thead>
                     <tr className="border-b border-emerald-100 bg-emerald-50/70 text-emerald-900">
-                      <th className="py-3 px-3 rounded-l-xl font-bold">สถานะ & ชื่องานที่ส่ง</th>
-                      <th className="py-3 px-3 font-bold">ชื่องานมอบหมายเดิม</th>
-                      <th className="py-3 px-3 font-bold">กำหนดส่ง</th>
-                      <th className="py-3 px-3 font-bold">ไฟล์ที่แนบ</th>
-                      <th className="py-3 px-3 rounded-r-xl font-bold text-right">การจัดการ</th>
+                      <th className="py-2.5 px-3 rounded-l-lg font-bold">สถานะ & ชื่องานที่ส่ง</th>
+                      <th className="py-2.5 px-3 font-bold">ชื่องานมอบหมายเดิม</th>
+                      <th className="py-2.5 px-3 font-bold">กำหนดส่ง</th>
+                      <th className="py-2.5 px-3 font-bold">ไฟล์ที่แนบ</th>
+                      <th className="py-2.5 px-3 rounded-r-lg font-bold text-right">การจัดการ</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-emerald-50">
@@ -1522,36 +1173,36 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                       const fileCount = Array.isArray(submission.files) ? submission.files.length : 0;
                       return (
                         <tr key={task.id} className="hover:bg-emerald-50/30 transition-colors">
-                          <td className="py-3.5 px-3">
+                          <td className="py-2.5 px-3">
                             <div className="flex items-center space-x-2">
-                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 whitespace-nowrap">
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300 whitespace-nowrap">
                                 🟢 ส่งแล้ว
                               </span>
                               <p className="font-bold text-slate-800">{submission.subject || task.title}</p>
                             </div>
                             {submission.description && (
-                              <p className="text-xs text-slate-500 line-clamp-1 mt-0.5 pl-0.5">
+                              <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5 pl-0.5">
                                 {submission.description}
                               </p>
                             )}
                           </td>
-                          <td className="py-3.5 px-3 text-slate-600 whitespace-nowrap">
+                          <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">
                             {task.title}
                           </td>
-                          <td className="py-3.5 px-3 whitespace-nowrap font-mono font-semibold text-emerald-900">
+                          <td className="py-2.5 px-3 whitespace-nowrap font-mono font-semibold text-emerald-900">
                             {formatThaiDateRange(task.startDate || task.dueDate, task.dueDate)}
                           </td>
-                          <td className="py-3.5 px-3 whitespace-nowrap">
-                            <span className="text-xs font-semibold text-emerald-800 bg-white px-2.5 py-1 rounded-lg border border-emerald-200 inline-flex items-center space-x-1">
+                          <td className="py-2.5 px-3 whitespace-nowrap">
+                            <span className="text-xs font-semibold text-emerald-800 bg-white px-2 py-0.5 rounded-md border border-emerald-200 inline-flex items-center space-x-1">
                               <Paperclip className="w-3 h-3 text-emerald-600" />
                               <span>{fileCount} ไฟล์</span>
                             </span>
                           </td>
-                          <td className="py-3.5 px-3 text-right whitespace-nowrap">
+                          <td className="py-2.5 px-3 text-right whitespace-nowrap">
                             <button
                               type="button"
                               onClick={() => handleOpenEditSubmissionModal(task, submission)}
-                              className="px-3 py-1.5 text-xs font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 rounded-xl transition-all inline-flex items-center space-x-1.5 cursor-pointer"
+                              className="px-2.5 py-1 text-xs font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 rounded-lg transition-all inline-flex items-center space-x-1 cursor-pointer"
                             >
                               <Edit3 className="w-3.5 h-3.5 text-emerald-700" />
                               <span>แก้ไขการส่งงาน</span>

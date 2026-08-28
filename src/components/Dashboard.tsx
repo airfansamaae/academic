@@ -708,11 +708,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   >
                     {cell.dayNum}
                   </span>
-                  {dayEvents.length > 0 && (
-                    <span className="text-[10px] font-bold text-slate-400">
-                      {dayEvents.length}
-                    </span>
-                  )}
                 </div>
 
                 {/* Event Tags inside the day */}
