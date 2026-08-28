@@ -97,8 +97,8 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
         groups.push({
           key: 'SAMPLE_DOC',
           title: '1. เอกสารตัวอย่างและแบบฟอร์มวิชาการ',
-          icon: '📄',
-          color: 'amber',
+          icon: '🩵',
+          color: 'teal',
           docs: sampleDocs,
         });
       }
@@ -111,7 +111,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
           key: 'OFFICIAL_ORDER',
           title: '2. หนังสือคำสั่งและระเบียบปฏิบัติราชการ',
           icon: '📜',
-          color: 'purple',
+          color: 'blue',
           docs: orderDocs,
         });
       }
@@ -478,8 +478,8 @@ ${doc.description || 'เอกสารศูนย์วิชาการพ�
               onClick={() => setSelectedCategory('SAMPLE_DOC')}
               className={`p-3 sm:px-4 sm:py-3 rounded-2xl text-left font-bold transition-all cursor-pointer flex items-center justify-between gap-3 border-2 ${
                 selectedCategory === 'SAMPLE_DOC'
-                  ? 'bg-purple-600 text-white border-purple-600 shadow-md ring-4 ring-purple-100'
-                  : 'bg-white text-slate-800 border-purple-200 hover:border-purple-400 hover:bg-purple-50/40 shadow-2xs'
+                  ? 'bg-teal-600 text-white border-teal-600 shadow-md ring-4 ring-teal-100'
+                  : 'bg-white text-slate-800 border-teal-200 hover:border-teal-400 hover:bg-teal-50/40 shadow-2xs'
               }`}
             >
               <div className="flex items-center space-x-3 min-w-0">
@@ -487,7 +487,7 @@ ${doc.description || 'เอกสารศูนย์วิชาการพ�
                   className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
                     selectedCategory === 'SAMPLE_DOC'
                       ? 'bg-white/20 text-white'
-                      : 'bg-amber-100 text-amber-800'
+                      : 'bg-teal-100 text-teal-800'
                   }`}
                 >
                   <FileText className="w-5 h-5" />
@@ -498,7 +498,7 @@ ${doc.description || 'เอกสารศูนย์วิชาการพ�
                   </div>
                   <div
                     className={`text-[11px] font-normal truncate mt-0.5 ${
-                      selectedCategory === 'SAMPLE_DOC' ? 'text-purple-100' : 'text-slate-500'
+                      selectedCategory === 'SAMPLE_DOC' ? 'text-teal-100' : 'text-slate-500'
                     }`}
                   >
                     แบบฟอร์ม คู่มือวิชาการ
@@ -508,8 +508,8 @@ ${doc.description || 'เอกสารศูนย์วิชาการพ�
               <span
                 className={`text-xs px-2.5 py-1 rounded-full font-mono font-bold shrink-0 ${
                   selectedCategory === 'SAMPLE_DOC'
-                    ? 'bg-white text-purple-700 shadow-2xs'
-                    : 'bg-amber-50 text-amber-800 border border-amber-200'
+                    ? 'bg-white text-teal-700 shadow-2xs'
+                    : 'bg-teal-50 text-teal-800 border border-teal-200'
                 }`}
               >
                 {categoryCounts.sampleDocs}
@@ -521,8 +521,8 @@ ${doc.description || 'เอกสารศูนย์วิชาการพ�
               onClick={() => setSelectedCategory('OFFICIAL_ORDER')}
               className={`p-3 sm:px-4 sm:py-3 rounded-2xl text-left font-bold transition-all cursor-pointer flex items-center justify-between gap-3 border-2 ${
                 selectedCategory === 'OFFICIAL_ORDER'
-                  ? 'bg-purple-600 text-white border-purple-600 shadow-md ring-4 ring-purple-100'
-                  : 'bg-white text-slate-800 border-purple-200 hover:border-purple-400 hover:bg-purple-50/40 shadow-2xs'
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-md ring-4 ring-blue-100'
+                  : 'bg-white text-slate-800 border-blue-200 hover:border-blue-400 hover:bg-blue-50/40 shadow-2xs'
               }`}
             >
               <div className="flex items-center space-x-3 min-w-0">
@@ -530,7 +530,7 @@ ${doc.description || 'เอกสารศูนย์วิชาการพ�
                   className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
                     selectedCategory === 'OFFICIAL_ORDER'
                       ? 'bg-white/20 text-white'
-                      : 'bg-purple-100 text-purple-800'
+                      : 'bg-blue-100 text-blue-800'
                   }`}
                 >
                   <File className="w-5 h-5" />
@@ -541,7 +541,7 @@ ${doc.description || 'เอกสารศูนย์วิชาการพ�
                   </div>
                   <div
                     className={`text-[11px] font-normal truncate mt-0.5 ${
-                      selectedCategory === 'OFFICIAL_ORDER' ? 'text-purple-100' : 'text-slate-500'
+                      selectedCategory === 'OFFICIAL_ORDER' ? 'text-blue-100' : 'text-slate-500'
                     }`}
                   >
                     ระเบียบปฏิบัติราชการ
@@ -551,8 +551,8 @@ ${doc.description || 'เอกสารศูนย์วิชาการพ�
               <span
                 className={`text-xs px-2.5 py-1 rounded-full font-mono font-bold shrink-0 ${
                   selectedCategory === 'OFFICIAL_ORDER'
-                    ? 'bg-white text-purple-700 shadow-2xs'
-                    : 'bg-purple-50 text-purple-800 border border-purple-200'
+                    ? 'bg-white text-blue-700 shadow-2xs'
+                    : 'bg-blue-50 text-blue-800 border border-blue-200'
                 }`}
               >
                 {categoryCounts.officialOrders}
@@ -596,8 +596,8 @@ ${doc.description || 'เอกสารศูนย์วิชาการพ�
                 <div
                   className={`w-9 h-9 rounded-xl flex items-center justify-center text-base font-bold shadow-2xs ${
                     group.key === 'SAMPLE_DOC'
-                      ? 'bg-amber-100 text-amber-800'
-                      : 'bg-purple-100 text-purple-800'
+                      ? 'bg-teal-100 text-teal-800'
+                      : 'bg-blue-100 text-blue-800'
                   }`}
                 >
                   {group.icon}
@@ -654,8 +654,8 @@ ${doc.description || 'เอกสารศูนย์วิชาการพ�
                                 <span
                                   className={`text-[9px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${
                                     isSampleDoc
-                                      ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                      : 'bg-purple-50 text-purple-700 border-purple-200'
+                                      ? 'bg-teal-50 text-teal-700 border-teal-200'
+                                      : 'bg-blue-50 text-blue-700 border-blue-200'
                                   }`}
                                 >
                                   {isSampleDoc ? 'ตัวอย่าง' : 'คำสั่ง'}
@@ -757,11 +757,11 @@ ${doc.description || 'เอกสารศูนย์วิชาการพ�
                     onClick={() => setDocCategory('SAMPLE_DOC')}
                     className={`py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer ${
                       docCategory === 'SAMPLE_DOC'
-                        ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-amber-50 hover:border-amber-200'
+                        ? 'bg-teal-600 text-white border-teal-600 shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-teal-50 hover:border-teal-200'
                     }`}
                   >
-                    <span>📄 1. เอกสารตัวอย่าง</span>
+                    <span>🩵 1. เอกสารตัวอย่าง</span>
                   </button>
 
                   <button
@@ -769,8 +769,8 @@ ${doc.description || 'เอกสารศูนย์วิชาการพ�
                     onClick={() => setDocCategory('OFFICIAL_ORDER')}
                     className={`py-2.5 px-3 rounded-xl border text-xs font-bold flex items-center justify-center space-x-2 transition-all cursor-pointer ${
                       docCategory === 'OFFICIAL_ORDER'
-                        ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-purple-50 hover:border-purple-200'
+                        ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-blue-50 hover:border-blue-200'
                     }`}
                   >
                     <span>📜 2. หนังสือคำสั่ง</span>

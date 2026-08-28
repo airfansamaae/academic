@@ -17,8 +17,13 @@ import {
   X,
   Send,
   ClipboardCheck,
+  FileText,
+  FileSpreadsheet,
+  FolderArchive,
+  Download,
+  Paperclip,
 } from 'lucide-react';
-import { User, Task, Announcement, Submission, NavigationTab } from '../types';
+import { User, Task, Announcement, Submission, DocumentItem, NavigationTab } from '../types';
 import {
   formatThaiDate,
   formatThaiDateRange,
@@ -29,6 +34,7 @@ interface DashboardProps {
   currentUser: User | null;
   tasks: Task[];
   announcements: Announcement[];
+  documents?: DocumentItem[];
   submissions: Submission[];
   users: User[];
   onNavigateTab: (tab: NavigationTab) => void;
@@ -39,18 +45,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
   currentUser,
   tasks,
   announcements,
+  documents = [],
   submissions,
   users,
   onNavigateTab,
   onSelectTaskToSubmit,
 }) => {
-  // Calendar state (defaults to current date 2026-08)
+  // Calendar state (defaults to current date)
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [selectedCalendarItem, setSelectedCalendarItem] = useState<{
-    type: 'TASK' | 'ANNOUNCEMENT';
+    type: 'TASK' | 'ANNOUNCEMENT' | 'OFFICIAL_ORDER' | 'SAMPLE_DOC';
     date: string;
-    item: Task | Announcement;
-    statusColor: 'RED' | 'GREEN' | 'YELLOW';
+    item: Task | Announcement | DocumentItem;
+    statusColor: 'RED' | 'GREEN' | 'AMBER' | 'BLUE' | 'TEAL';
     statusText: string;
   } | null>(null);
 
@@ -182,9 +189,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const map = new Map<
       string,
       Array<{
-        type: 'TASK' | 'ANNOUNCEMENT';
-        item: Task | Announcement;
-        statusColor: 'RED' | 'GREEN' | 'YELLOW';
+        type: 'TASK' | 'ANNOUNCEMENT' | 'OFFICIAL_ORDER' | 'SAMPLE_DOC';
+        item: Task | Announcement | DocumentItem;
+        statusColor: 'RED' | 'GREEN' | 'AMBER' | 'BLUE' | 'TEAL';
         statusText: string;
         isRange: boolean;
         isRangeStart: boolean;
@@ -195,7 +202,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       }>
     >();
 
-    // Announcements -> Always YELLOW
+    // 1. Announcements -> Always AMBER/YELLOW
     announcements.forEach((ann) => {
       const startDate = ann.date;
       const endDate = ann.endDate || ann.date;
@@ -210,7 +217,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         map.get(d)!.push({
           type: 'ANNOUNCEMENT',
           item: ann,
-          statusColor: 'YELLOW',
+          statusColor: 'AMBER',
           statusText: 'ประกาศแจ้งเพื่อทราบ',
           isRange,
           isRangeStart: isRange && idx === 0,
@@ -222,9 +229,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
       });
     });
 
-    // Tasks
+    // 2. Tasks -> RED (pending/incomplete) or GREEN (submitted/complete)
     tasks.forEach((task) => {
-      let statusColor: 'RED' | 'GREEN' | 'YELLOW' = 'RED';
+      let statusColor: 'RED' | 'GREEN' = 'RED';
       let statusText = 'มีงานต้องส่ง';
 
       if (isAdmin) {
@@ -278,8 +285,33 @@ export const Dashboard: React.FC<DashboardProps> = ({
       });
     });
 
+    // 3. Documents from Document Center (Official Orders = BLUE, Sample Docs = TEAL)
+    documents.forEach((doc) => {
+      const docDate = doc.createdAt ? doc.createdAt.split('T')[0] : '';
+      if (!docDate) return;
+
+      const isOrder = doc.category === 'OFFICIAL_ORDER';
+      const statusColor: 'BLUE' | 'TEAL' = isOrder ? 'BLUE' : 'TEAL';
+      const statusText = isOrder ? 'หนังสือคำสั่งและระเบียบ' : 'เอกสารตัวอย่างและแบบฟอร์ม';
+      const type: 'OFFICIAL_ORDER' | 'SAMPLE_DOC' = isOrder ? 'OFFICIAL_ORDER' : 'SAMPLE_DOC';
+
+      if (!map.has(docDate)) map.set(docDate, []);
+      map.get(docDate)!.push({
+        type,
+        item: doc,
+        statusColor,
+        statusText,
+        isRange: false,
+        isRangeStart: false,
+        isRangeEnd: false,
+        isRangeMiddle: false,
+        rangeTotalDays: 1,
+        rangeDayIndex: 0,
+      });
+    });
+
     return map;
-  }, [tasks, announcements, isAdmin, currentUser, activeMembers, submissions]);
+  }, [tasks, announcements, documents, isAdmin, currentUser, activeMembers, submissions]);
 
   // Member Unsubmitted Tasks
   const memberPendingTasks = useMemo(() => {
@@ -720,25 +752,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   {dayEvents.map((evt, eIdx) => {
                     const isRed = evt.statusColor === 'RED';
                     const isGreen = evt.statusColor === 'GREEN';
-                    const isYellow = evt.statusColor === 'YELLOW';
+                    const isAmber = evt.statusColor === 'AMBER';
+                    const isBlue = evt.statusColor === 'BLUE';
+                    const isTeal = evt.statusColor === 'TEAL';
 
                     const bgClass = isRed
                       ? 'bg-rose-100/90 border-rose-300 text-rose-900 hover:bg-rose-200'
                       : isGreen
                       ? 'bg-emerald-100/90 border-emerald-300 text-emerald-900 hover:bg-emerald-200'
-                      : 'bg-amber-100/90 border-amber-300 text-amber-900 hover:bg-amber-200';
+                      : isAmber
+                      ? 'bg-amber-100/90 border-amber-300 text-amber-900 hover:bg-amber-200'
+                      : isBlue
+                      ? 'bg-blue-100/90 border-blue-300 text-blue-900 hover:bg-blue-200'
+                      : 'bg-teal-100/90 border-teal-300 text-teal-900 hover:bg-teal-200';
 
                     const dotClass = isRed
                       ? 'bg-rose-600'
                       : isGreen
                       ? 'bg-emerald-600'
-                      : 'bg-amber-500';
-
-                    const borderLineClass = isRed
-                      ? 'border-rose-400'
-                      : isGreen
-                      ? 'border-emerald-400'
-                      : 'border-amber-400';
+                      : isAmber
+                      ? 'bg-amber-500'
+                      : isBlue
+                      ? 'bg-blue-600'
+                      : 'bg-teal-600';
 
                     // If it's a Multi-Day connected range
                     if (evt.isRange) {
@@ -833,53 +869,69 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 border-t border-slate-200/60 text-xs">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 pt-2 border-t border-slate-200/60 text-xs">
               {/* Part 1: Color Meanings */}
-              <div className="space-y-1.5">
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">1. ความหมายของสี:</p>
-                <div className="flex flex-col space-y-1">
-                  <div className="flex items-center space-x-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-rose-200 shrink-0"></span>
-                    <span className="text-slate-700">
-                      <strong className="text-rose-700">สีแดง:</strong> {isAdmin ? 'งานที่ยังส่งไม่ครบทุกคน' : 'มีงานต้องส่ง / งานค้างส่ง'}
+              <div className="space-y-2">
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  1. แยกสีชัดเจนตามประเภทและสถานะ:
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div className="flex items-center space-x-2 bg-white p-2 rounded-xl border border-slate-200/80 shadow-2xs">
+                    <span className="w-3 h-3 rounded-full bg-rose-500 ring-2 ring-rose-200 shrink-0"></span>
+                    <span className="text-slate-700 leading-tight">
+                      <strong className="text-rose-700">🔴 สีแดง:</strong> งานมอบหมาย (ยังไม่ส่ง / ไม่ครบ)
                     </span>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-200 shrink-0"></span>
-                    <span className="text-slate-700">
-                      <strong className="text-emerald-700">สีเขียว:</strong> {isAdmin ? 'สมาชิกส่งครบทุกคนแล้ว' : 'ส่งงานเรียบร้อยแล้ว'}
+                  <div className="flex items-center space-x-2 bg-white p-2 rounded-xl border border-slate-200/80 shadow-2xs">
+                    <span className="w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-emerald-200 shrink-0"></span>
+                    <span className="text-slate-700 leading-tight">
+                      <strong className="text-emerald-700">🟢 สีเขียว:</strong> งานมอบหมาย (ส่งแล้ว / ส่งครบ)
                     </span>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-amber-200 shrink-0"></span>
-                    <span className="text-slate-700">
-                      <strong className="text-amber-700">สีเหลือง:</strong> ประกาศแจ้งเตือนเพื่อทราบ / วันสำคัญ
+                  <div className="flex items-center space-x-2 bg-white p-2 rounded-xl border border-slate-200/80 shadow-2xs">
+                    <span className="w-3 h-3 rounded-full bg-amber-500 ring-2 ring-amber-200 shrink-0"></span>
+                    <span className="text-slate-700 leading-tight">
+                      <strong className="text-amber-700">🟡 สีส้ม:</strong> ประกาศแจ้งเพื่อทราบ / วันสำคัญ
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2 bg-white p-2 rounded-xl border border-slate-200/80 shadow-2xs">
+                    <span className="w-3 h-3 rounded-full bg-blue-600 ring-2 ring-blue-200 shrink-0"></span>
+                    <span className="text-slate-700 leading-tight">
+                      <strong className="text-blue-700">🔵 สีน้ำเงิน:</strong> หนังสือคำสั่ง (ศูนย์เอกสาร)
+                    </span>
+                  </div>
+                  <div className="flex items-center space-x-2 bg-white p-2 rounded-xl border border-slate-200/80 shadow-2xs sm:col-span-2">
+                    <span className="w-3 h-3 rounded-full bg-teal-600 ring-2 ring-teal-200 shrink-0"></span>
+                    <span className="text-slate-700 leading-tight">
+                      <strong className="text-teal-700">🩵 สีเขียวหัวเป็ด/ทีล:</strong> เอกสารตัวอย่างและแบบฟอร์ม (ศูนย์เอกสาร)
                     </span>
                   </div>
                 </div>
               </div>
 
               {/* Part 2: Timeline Formats (Single day vs Multi-day Range) */}
-              <div className="space-y-1.5 md:border-l md:border-slate-200 md:pl-4">
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">2. ลักษณะการแสดงผล:</p>
-                <div className="flex flex-col space-y-1.5">
-                  <div className="flex items-center space-x-2">
+              <div className="space-y-2 lg:border-l lg:border-slate-200 lg:pl-4">
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  2. ลักษณะการแสดงผลบนปฏิทิน:
+                </p>
+                <div className="flex flex-col space-y-2">
+                  <div className="flex items-center space-x-2.5 bg-white p-2 rounded-xl border border-slate-200/80 shadow-2xs">
                     <div className="px-2 py-0.5 rounded-lg bg-purple-100 border border-purple-300 text-purple-900 text-[10px] font-bold inline-flex items-center space-x-1 shrink-0">
                       <span className="w-1.5 h-1.5 rounded-full bg-purple-600"></span>
                       <span>● 1 จุด</span>
                     </div>
                     <span className="text-slate-700">
-                      <strong>วันเดียว:</strong> แสดง 1 จุดเดี่ยว สำหรับกำหนดส่งวันเดียว
+                      <strong>วันเดียว:</strong> แสดง 1 จุดเดี่ยว สำหรับกำหนดส่งวันเดียวหรือเอกสารรายวัน
                     </span>
                   </div>
 
-                  <div className="flex items-center space-x-2">
+                  <div className="flex items-center space-x-2.5 bg-white p-2 rounded-xl border border-slate-200/80 shadow-2xs">
                     <div className="px-2 py-0.5 rounded-md bg-purple-100 border-y border-purple-300 text-purple-900 text-[10px] font-bold inline-flex items-center space-x-1 shrink-0">
                       <span className="w-1.5 h-1.5 rounded-full bg-purple-600"></span>
                       <span>━━━━▶</span>
                     </div>
                     <span className="text-slate-700">
-                      <strong>ช่วงเวลา (2-3 วันขึ้นไป):</strong> จุดเชื่อมกันเป็นแถบยาวต่อเนื่อง
+                      <strong>ช่วงเวลา (2-3 วันขึ้นไป):</strong> จุดเชื่อมกันเป็นแถบยาวต่อเนื่องตลอดช่วงเวลา
                     </span>
                   </div>
                 </div>
@@ -1088,13 +1140,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     ? 'bg-rose-500'
                     : selectedCalendarItem.statusColor === 'GREEN'
                     ? 'bg-emerald-500'
-                    : 'bg-amber-500'
+                    : selectedCalendarItem.statusColor === 'AMBER'
+                    ? 'bg-amber-500'
+                    : selectedCalendarItem.statusColor === 'BLUE'
+                    ? 'bg-blue-600'
+                    : 'bg-teal-600'
                 }`}
               >
                 {selectedCalendarItem.type === 'TASK' ? (
                   <FileCheck className="w-6 h-6" />
-                ) : (
+                ) : selectedCalendarItem.type === 'ANNOUNCEMENT' ? (
                   <Megaphone className="w-6 h-6" />
+                ) : selectedCalendarItem.type === 'OFFICIAL_ORDER' ? (
+                  <FileText className="w-6 h-6" />
+                ) : (
+                  <FileSpreadsheet className="w-6 h-6" />
                 )}
               </div>
               <div>
@@ -1104,7 +1164,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       ? 'bg-rose-100 text-rose-800 border-rose-300'
                       : selectedCalendarItem.statusColor === 'GREEN'
                       ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                      : 'bg-amber-100 text-amber-800 border-amber-300'
+                      : selectedCalendarItem.statusColor === 'AMBER'
+                      ? 'bg-amber-100 text-amber-800 border-amber-300'
+                      : selectedCalendarItem.statusColor === 'BLUE'
+                      ? 'bg-blue-100 text-blue-800 border-blue-300'
+                      : 'bg-teal-100 text-teal-800 border-teal-300'
                   }`}
                 >
                   {selectedCalendarItem.statusText}
@@ -1116,9 +1180,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         (selectedCalendarItem.item as Task).dueDate,
                         true
                       )
-                    : formatThaiDateRange(
+                    : selectedCalendarItem.type === 'ANNOUNCEMENT'
+                    ? formatThaiDateRange(
                         (selectedCalendarItem.item as Announcement).date,
                         (selectedCalendarItem.item as Announcement).endDate || (selectedCalendarItem.item as Announcement).date,
+                        true
+                      )
+                    : formatThaiDate(
+                        (selectedCalendarItem.item as DocumentItem).createdAt
+                          ? (selectedCalendarItem.item as DocumentItem).createdAt.split('T')[0]
+                          : selectedCalendarItem.date,
                         true
                       )}
                 </p>
@@ -1132,8 +1203,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="mt-3 p-3.5 bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-700 leading-relaxed max-h-48 overflow-y-auto">
               {'description' in selectedCalendarItem.item
                 ? selectedCalendarItem.item.description
-                : selectedCalendarItem.item.details}
+                : 'details' in selectedCalendarItem.item
+                ? selectedCalendarItem.item.details
+                : (selectedCalendarItem.item as DocumentItem).description || 'เอกสารทางการวิชาการ'}
             </div>
+
+            {/* Document File Info if it's a Document */}
+            {(selectedCalendarItem.type === 'OFFICIAL_ORDER' || selectedCalendarItem.type === 'SAMPLE_DOC') && (
+              <div className="mt-3 p-2.5 bg-slate-100/80 rounded-xl border border-slate-200/80 flex items-center justify-between text-xs">
+                <div className="flex items-center space-x-2 min-w-0">
+                  <Paperclip className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span className="font-mono text-slate-700 truncate">
+                    {(selectedCalendarItem.item as DocumentItem).fileName}
+                  </span>
+                </div>
+                <span className="text-[11px] font-mono text-slate-500 shrink-0">
+                  {(selectedCalendarItem.item as DocumentItem).fileSize}
+                </span>
+              </div>
+            )}
 
             <div className="mt-6 flex justify-end space-x-3">
               <button
@@ -1155,6 +1243,32 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 >
                   <Send className="w-3.5 h-3.5" />
                   <span>ไปหน้าส่งงานนี้</span>
+                </button>
+              )}
+
+              {(selectedCalendarItem.type === 'OFFICIAL_ORDER' || selectedCalendarItem.type === 'SAMPLE_DOC') && (
+                <button
+                  onClick={() => {
+                    setSelectedCalendarItem(null);
+                    onNavigateTab('DOCUMENT_CENTER');
+                  }}
+                  className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-all cursor-pointer inline-flex items-center space-x-1.5"
+                >
+                  <FolderArchive className="w-3.5 h-3.5" />
+                  <span>เปิดศูนย์เอกสาร</span>
+                </button>
+              )}
+
+              {selectedCalendarItem.type === 'ANNOUNCEMENT' && (
+                <button
+                  onClick={() => {
+                    setSelectedCalendarItem(null);
+                    onNavigateTab('ASSIGN_SUBMIT');
+                  }}
+                  className="px-4 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition-all cursor-pointer inline-flex items-center space-x-1.5"
+                >
+                  <Megaphone className="w-3.5 h-3.5" />
+                  <span>ดูประกาศทั้งหมด</span>
                 </button>
               )}
             </div>

@@ -239,6 +239,7 @@ export default function App() {
                   currentUser={currentUser}
                   tasks={tasks}
                   announcements={announcements}
+                  documents={documents}
                   submissions={submissions}
                   users={users}
                   onNavigateTab={(tab) => {

@@ -596,12 +596,12 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                 onClick={() => setAdminListFilter('ANNOUNCEMENT')}
                 className={`px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center space-x-1.5 ${
                   adminListFilter === 'ANNOUNCEMENT'
-                    ? 'bg-white text-purple-700 shadow-2xs'
+                    ? 'bg-white text-amber-800 shadow-2xs'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
                 <span>📢 ประกาศแจ้งเพื่อทราบ</span>
-                <span className="bg-purple-100 text-purple-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                <span className="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded-full font-bold">
                   {safeAnnouncements.length}
                 </span>
               </button>
@@ -611,6 +611,10 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
               <span className="inline-flex items-center space-x-1">
                 <span className="w-2.5 h-2.5 rounded-full bg-purple-600"></span>
                 <span>งานมอบหมาย: สีม่วง</span>
+              </span>
+              <span className="inline-flex items-center space-x-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                <span>ประกาศ: สีส้ม</span>
               </span>
               <span className="inline-flex items-center space-x-1">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-600"></span>
@@ -762,13 +766,14 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
 
           {/* Announcements Section (Admin) */}
           {(adminListFilter === 'ALL' || adminListFilter === 'ANNOUNCEMENT') && (
-            <div className="bg-white rounded-2xl border border-purple-100 p-4 sm:p-5 shadow-xs space-y-3">
-              <div className="flex items-center justify-between pb-2.5 border-b border-purple-100/70">
+            <div className="bg-white rounded-2xl border border-amber-200/80 p-4 sm:p-5 shadow-xs space-y-3">
+              <div className="flex items-center justify-between pb-2.5 border-b border-amber-100">
                 <div className="flex items-center space-x-2">
-                  <span className="text-sm sm:text-base font-bold text-slate-800">
-                    รายการประกาศแจ้งเพื่อทราบทั้งหมด
+                  <span className="text-sm sm:text-base font-bold text-slate-800 flex items-center space-x-1.5">
+                    <span>📢</span>
+                    <span>รายการประกาศแจ้งเพื่อทราบทั้งหมด</span>
                   </span>
-                  <span className="text-xs font-bold bg-purple-50 text-purple-700 px-2 py-0.5 rounded-md border border-purple-100">
+                  <span className="text-xs font-bold bg-amber-50 text-amber-800 px-2 py-0.5 rounded-md border border-amber-200">
                     {adminSortedAnnouncements.length} รายการ
                   </span>
                 </div>
@@ -782,7 +787,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="border-b border-purple-100 bg-purple-50/60 text-purple-900">
+                      <tr className="border-b border-amber-200 bg-amber-50/70 text-amber-950">
                         <th className="py-2.5 px-3 rounded-l-lg font-bold">ประเภท & หัวข้อประกาศ</th>
                         <th className="py-2.5 px-3 font-bold">วันที่ประกาศ / จัดกิจกรรม</th>
                         <th className="py-2.5 px-3 font-bold">รายละเอียด</th>
@@ -791,9 +796,9 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {adminSortedAnnouncements.map((ann) => (
-                        <tr key={ann.id} className="hover:bg-purple-50/30 transition-colors">
+                        <tr key={ann.id} className="hover:bg-amber-50/30 transition-colors">
                           <td className="py-2.5 px-3 whitespace-nowrap">
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-100 text-purple-900 border border-purple-200">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-200">
                               {ann.type === 'HOLIDAY'
                                 ? '🏖️ วันหยุด'
                                 : ann.type === 'ACTIVITY'
@@ -813,7 +818,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                               <button
                                 type="button"
                                 onClick={() => handleOpenEditAnnouncement(ann)}
-                                className="p-1 text-slate-400 hover:text-purple-700 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
+                                className="p-1 text-slate-400 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
                                 title="แก้ไขประกาศ"
                               >
                                 <Edit3 className="w-3.5 h-3.5" />
