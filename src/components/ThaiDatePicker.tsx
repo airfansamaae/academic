@@ -3,9 +3,7 @@ import {
   Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
-  ArrowRight,
-  Check,
-  CalendarRange,
+  Sparkles,
 } from 'lucide-react';
 import {
   thaiMonthNamesFull,
@@ -19,7 +17,7 @@ export interface ThaiDatePickerProps {
   endDate?: string; // ISO date 'YYYY-MM-DD' (End date for range mode)
   onChange?: (dateStr: string) => void;
   onChangeRange?: (startDate: string, endDate: string) => void;
-  allowRange?: boolean; // If true, user can toggle single date vs date range
+  allowRange?: boolean;
   label?: string;
   placeholder?: string;
   required?: boolean;
@@ -35,25 +33,22 @@ export const ThaiDatePicker: React.FC<ThaiDatePickerProps> = ({
   endDate,
   onChange,
   onChangeRange,
-  allowRange = true,
   label,
   placeholder = 'วว/ดด/ปปปป (dd/mm/yyyy)',
   required = false,
   className = '',
   colorScheme = 'purple',
 }) => {
-  const isRangeConfigured = Boolean(endDate && endDate !== value);
-  const [isRangeMode, setIsRangeMode] = useState<boolean>(isRangeConfigured);
-
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Range selection tracking (when picking in calendar)
-  const [rangeSelectingStep, setRangeSelectingStep] = useState<'START' | 'END'>('START');
-  const [tempStartDate, setTempStartDate] = useState<string>(value || '');
-  const [tempEndDate, setTempEndDate] = useState<string>(endDate || value || '');
+  // Click tracking for two-click selection:
+  // 1st click sets pendingFirstDate.
+  // 2nd click on same date => Single Day.
+  // 2nd click on different date => Date Range (startDate..endDate).
+  const [pendingFirstDate, setPendingFirstDate] = useState<string | null>(null);
 
-  // Parse initial date for calendar view
+  // Parse date for calendar initial view
   const parseDate = (val: string): Date => {
     if (!val || typeof val !== 'string') return new Date();
     const parts = val.split('-');
@@ -72,19 +67,12 @@ export const ThaiDatePicker: React.FC<ThaiDatePickerProps> = ({
   const [viewYear, setViewYear] = useState<number>(initialViewDate.getFullYear());
   const [viewMonth, setViewMonth] = useState<number>(initialViewDate.getMonth());
 
-  useEffect(() => {
-    setTempStartDate(value || '');
-    setTempEndDate(endDate || value || '');
-    if (endDate && endDate !== value) {
-      setIsRangeMode(true);
-    }
-  }, [value, endDate]);
-
   // Handle outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setIsOpen(false);
+        setPendingFirstDate(null);
       }
     };
     if (isOpen) {
@@ -94,6 +82,17 @@ export const ThaiDatePicker: React.FC<ThaiDatePickerProps> = ({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isOpen]);
+
+  // Reset pending state when picker opens
+  const handleToggleOpen = () => {
+    if (!isOpen) {
+      setPendingFirstDate(null);
+      const activeDate = parseDate(value || new Date().toISOString().split('T')[0]);
+      setViewYear(activeDate.getFullYear());
+      setViewMonth(activeDate.getMonth());
+    }
+    setIsOpen(!isOpen);
+  };
 
   // Calendar matrix calculation
   const getDaysInMonth = (year: number, month: number) => {
@@ -145,45 +144,42 @@ export const ThaiDatePicker: React.FC<ThaiDatePickerProps> = ({
     }
   };
 
-  // Day selection handling
+  // Smart Date Click Handler:
+  // - 1st click: selects starting date
+  // - 2nd click on SAME date: selects single date and closes
+  // - 2nd click on ANOTHER date: selects date range and closes
   const handleSelectDay = (day: number) => {
     const yStr = String(viewYear);
     const mStr = String(viewMonth + 1).padStart(2, '0');
     const dStr = String(day).padStart(2, '0');
     const isoDate = `${yStr}-${mStr}-${dStr}`;
 
-    if (!isRangeMode) {
-      // Single date mode
-      if (onChange) onChange(isoDate);
-      if (onChangeRange) onChangeRange(isoDate, isoDate);
-      setIsOpen(false);
+    if (!pendingFirstDate) {
+      // First click: Record starting point
+      setPendingFirstDate(isoDate);
     } else {
-      // Range mode
-      if (rangeSelectingStep === 'START') {
-        setTempStartDate(isoDate);
-        setTempEndDate(isoDate);
-        setRangeSelectingStep('END');
+      // Second click:
+      if (pendingFirstDate === isoDate) {
+        // Clicked same date twice -> Single date
+        if (onChange) onChange(isoDate);
+        if (onChangeRange) onChangeRange(isoDate, isoDate);
       } else {
-        // Step 2: picking end date
-        let start = tempStartDate || isoDate;
+        // Clicked different date -> Date range
+        let start = pendingFirstDate;
         let end = isoDate;
         if (start > end) {
-          // Swap if end is earlier than start
           const tmp = start;
           start = end;
           end = tmp;
         }
-        setTempStartDate(start);
-        setTempEndDate(end);
-
         if (onChangeRange) {
           onChangeRange(start, end);
         } else if (onChange) {
           onChange(start);
         }
-        setRangeSelectingStep('START');
-        setIsOpen(false);
       }
+      setPendingFirstDate(null);
+      setIsOpen(false);
     }
   };
 
@@ -191,38 +187,12 @@ export const ThaiDatePicker: React.FC<ThaiDatePickerProps> = ({
     e.stopPropagation();
     const today = new Date();
     const isoDate = today.toISOString().split('T')[0];
-    if (isRangeMode) {
-      setTempStartDate(isoDate);
-      setTempEndDate(isoDate);
-      if (onChangeRange) onChangeRange(isoDate, isoDate);
-    } else {
-      if (onChange) onChange(isoDate);
-      if (onChangeRange) onChangeRange(isoDate, isoDate);
-    }
+    if (onChange) onChange(isoDate);
+    if (onChangeRange) onChangeRange(isoDate, isoDate);
     setViewYear(today.getFullYear());
     setViewMonth(today.getMonth());
+    setPendingFirstDate(null);
     setIsOpen(false);
-  };
-
-  const handleSwitchToSingle = () => {
-    setIsRangeMode(false);
-    setRangeSelectingStep('START');
-    const singleVal = value || tempStartDate || new Date().toISOString().split('T')[0];
-    if (onChangeRange) onChangeRange(singleVal, singleVal);
-    if (onChange) onChange(singleVal);
-  };
-
-  const handleSwitchToRange = () => {
-    setIsRangeMode(true);
-    setRangeSelectingStep('START');
-    const startVal = value || tempStartDate || new Date().toISOString().split('T')[0];
-    // Default end date is 2 days after start (e.g. 3-day range)
-    const d = parseDate(startVal);
-    d.setDate(d.getDate() + 2);
-    const endVal = endDate && endDate !== value ? endDate : d.toISOString().split('T')[0];
-    setTempStartDate(startVal);
-    setTempEndDate(endVal);
-    if (onChangeRange) onChangeRange(startVal, endVal);
   };
 
   // Color schemes
@@ -234,8 +204,6 @@ export const ThaiDatePicker: React.FC<ThaiDatePickerProps> = ({
       hoverDay: 'hover:bg-purple-50 hover:text-purple-700',
       iconColor: 'text-purple-600',
       badgeBg: 'bg-purple-50 text-purple-700 border-purple-200',
-      tabActive: 'bg-purple-600 text-white shadow-xs',
-      tabInactive: 'text-slate-600 hover:text-purple-700 hover:bg-slate-100',
     },
     amber: {
       borderFocus: 'focus-within:border-amber-500 focus-within:ring-2 focus-within:ring-amber-500/20',
@@ -244,8 +212,6 @@ export const ThaiDatePicker: React.FC<ThaiDatePickerProps> = ({
       hoverDay: 'hover:bg-amber-50 hover:text-amber-700',
       iconColor: 'text-amber-600',
       badgeBg: 'bg-amber-50 text-amber-700 border-amber-200',
-      tabActive: 'bg-amber-600 text-white shadow-xs',
-      tabInactive: 'text-slate-600 hover:text-amber-700 hover:bg-slate-100',
     },
     rose: {
       borderFocus: 'focus-within:border-rose-500 focus-within:ring-2 focus-within:ring-rose-500/20',
@@ -254,8 +220,6 @@ export const ThaiDatePicker: React.FC<ThaiDatePickerProps> = ({
       hoverDay: 'hover:bg-rose-50 hover:text-rose-700',
       iconColor: 'text-rose-600',
       badgeBg: 'bg-rose-50 text-rose-700 border-rose-200',
-      tabActive: 'bg-rose-600 text-white shadow-xs',
-      tabInactive: 'text-slate-600 hover:text-rose-700 hover:bg-slate-100',
     },
     emerald: {
       borderFocus: 'focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/20',
@@ -264,8 +228,6 @@ export const ThaiDatePicker: React.FC<ThaiDatePickerProps> = ({
       hoverDay: 'hover:bg-emerald-50 hover:text-emerald-700',
       iconColor: 'text-emerald-600',
       badgeBg: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-      tabActive: 'bg-emerald-600 text-white shadow-xs',
-      tabInactive: 'text-slate-600 hover:text-emerald-700 hover:bg-slate-100',
     },
   }[colorScheme];
 
@@ -281,13 +243,24 @@ export const ThaiDatePicker: React.FC<ThaiDatePickerProps> = ({
       today.getMonth() === viewMonth &&
       today.getDate() === day;
 
-    if (!isRangeMode) {
+    if (pendingFirstDate) {
+      const isStart = isoDate === pendingFirstDate;
+      return {
+        isSelected: isStart,
+        isInRange: false,
+        isEndpoint: isStart,
+        isToday,
+      };
+    }
+
+    const isRange = Boolean(endDate && endDate !== value);
+    if (!isRange) {
       const isSelected = value === isoDate;
       return { isSelected, isInRange: false, isEndpoint: isSelected, isToday };
     }
 
-    const start = tempStartDate || value;
-    const end = tempEndDate || endDate || start;
+    const start = value;
+    const end = endDate || value;
     const isStart = isoDate === start;
     const isEnd = isoDate === end;
     const isInRange = isDateWithinRange(isoDate, start, end);
@@ -302,93 +275,68 @@ export const ThaiDatePicker: React.FC<ThaiDatePickerProps> = ({
     };
   };
 
-  const displayText = isRangeMode
+  const isRange = Boolean(endDate && endDate !== value);
+  const displayText = isRange
     ? formatThaiDateRange(value, endDate || value)
     : formatThaiDate(value);
 
   return (
-    <div className={`relative space-y-2 ${className}`} ref={containerRef}>
-      {/* Label and Mode Switcher */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
-        {label && (
-          <label className="text-xs font-bold text-slate-700 flex items-center space-x-1.5">
-            <CalendarIcon className={`w-4 h-4 ${colorStyles.iconColor}`} />
-            <span>{label}</span>
-            {required && <span className="text-rose-500">*</span>}
-          </label>
-        )}
-
-        {allowRange && (
-          <div className="inline-flex p-0.5 bg-slate-100 rounded-lg border border-slate-200 self-start sm:self-auto">
-            <button
-              type="button"
-              onClick={handleSwitchToSingle}
-              className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer flex items-center space-x-1 ${
-                !isRangeMode ? colorStyles.tabActive : colorStyles.tabInactive
-              }`}
-            >
-              <CalendarIcon className="w-3 h-3" />
-              <span>วันเดียว</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleSwitchToRange}
-              className={`px-2.5 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer flex items-center space-x-1 ${
-                isRangeMode ? colorStyles.tabActive : colorStyles.tabInactive
-              }`}
-            >
-              <CalendarRange className="w-3 h-3" />
-              <span>ช่วงวันที่ / ระหว่างวันที่</span>
-            </button>
-          </div>
-        )}
-      </div>
+    <div className={`relative space-y-1.5 ${className}`} ref={containerRef}>
+      {/* Label */}
+      {label && (
+        <label className="text-xs font-bold text-slate-700 flex items-center space-x-1.5">
+          <CalendarIcon className={`w-4 h-4 ${colorStyles.iconColor}`} />
+          <span>{label}</span>
+          {required && <span className="text-rose-500">*</span>}
+        </label>
+      )}
 
       {/* Input Display Button */}
       <div
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={handleToggleOpen}
         className={`w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between cursor-pointer text-xs sm:text-sm font-semibold transition-all hover:bg-white ${colorStyles.borderFocus} shadow-2xs`}
       >
         <div className="flex items-center space-x-2 truncate">
           <span className={value ? 'text-slate-800 font-bold' : 'text-slate-400'}>
             {value ? displayText : placeholder}
           </span>
-          {isRangeMode && endDate && endDate !== value && (
+          {isRange && (
             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${colorStyles.badgeBg}`}>
               ช่วงวันที่
             </span>
           )}
         </div>
         <div className="flex items-center space-x-1.5 shrink-0">
-          {isRangeMode ? (
-            <CalendarRange className={`w-4 h-4 ${colorStyles.iconColor}`} />
-          ) : (
-            <CalendarIcon className={`w-4 h-4 ${colorStyles.iconColor}`} />
-          )}
+          <CalendarIcon className={`w-4 h-4 ${colorStyles.iconColor}`} />
         </div>
       </div>
 
       {/* Calendar Dropdown Popover */}
       {isOpen && (
         <div className="absolute z-50 mt-1 left-0 w-80 sm:w-88 bg-white rounded-2xl shadow-2xl border border-slate-200 p-3.5 animate-in fade-in zoom-in-95 duration-150">
-          {/* Range Selection Instructions */}
-          {isRangeMode && (
-            <div className="mb-3 p-2 bg-slate-50 border border-slate-200/80 rounded-xl text-xs flex items-center justify-between">
-              <div className="flex items-center space-x-1.5 text-slate-700">
-                <span className="font-bold">
-                  {rangeSelectingStep === 'START'
-                    ? '1. เลือกวันเริ่มต้น'
-                    : '2. เลือกวันสิ้นสุด'}
+          {/* Smart Selection Guide Header */}
+          <div className="mb-2.5 p-2 rounded-xl bg-slate-50 border border-slate-200/80 text-[11px] leading-relaxed">
+            {pendingFirstDate ? (
+              <div className="flex items-center justify-between font-bold text-purple-800">
+                <span>
+                  เลือกวันแรก: {formatThaiDate(pendingFirstDate)}
+                </span>
+                <span className="text-[10px] text-slate-500 font-normal">
+                  กดวันที่เดิมซ้ำ = วันเดียว | กดวันอื่น = ช่วงวัน
                 </span>
               </div>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${colorStyles.badgeBg}`}>
-                {formatThaiDateRange(tempStartDate, tempEndDate)}
-              </span>
-            </div>
-          )}
+            ) : (
+              <div className="text-slate-600 flex items-center space-x-1">
+                <Sparkles className="w-3 h-3 text-purple-600 shrink-0" />
+                <span>
+                  กดวันที่เดิม 2 ครั้ง = วันเดียว • กด 2 วันต่างกัน = ช่วงวันที่
+                </span>
+              </div>
+            )}
+          </div>
 
-          {/* Header Controls */}
-          <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-slate-100">
+          {/* Month & Year Controls */}
+          <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
             <button
               type="button"
               onClick={handlePrevMonth}
@@ -478,7 +426,7 @@ export const ThaiDatePicker: React.FC<ThaiDatePickerProps> = ({
           </div>
 
           {/* Footer Quick Pick */}
-          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
+          <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
             <button
               type="button"
               onClick={handleSelectToday}
@@ -488,7 +436,10 @@ export const ThaiDatePicker: React.FC<ThaiDatePickerProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setIsOpen(false)}
+              onClick={() => {
+                setIsOpen(false);
+                setPendingFirstDate(null);
+              }}
               className="text-slate-500 hover:text-slate-700 font-semibold px-2.5 py-1 bg-slate-100 rounded-md hover:bg-slate-200 cursor-pointer"
             >
               ปิด

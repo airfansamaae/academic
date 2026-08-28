@@ -16,6 +16,7 @@ import {
 import { StorageService } from './services/storage';
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
+import { MobileBottomNav } from './components/MobileBottomNav';
 import { Dashboard } from './components/Dashboard';
 import { TaskAssignment } from './components/TaskAssignment';
 import { TrackingAndGrading } from './components/TrackingAndGrading';
@@ -215,9 +216,9 @@ export default function App() {
       />
 
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 lg:pb-6">
         <div className="flex flex-col lg:flex-row gap-6">
-          {/* Left Sidebar Navigation */}
+          {/* Left Sidebar Navigation (Desktop) */}
           <Sidebar
             activeTab={activeTab}
             onTabChange={(tab) => {
@@ -283,6 +284,17 @@ export default function App() {
           </section>
         </div>
       </main>
+
+      {/* Mobile Fixed Bottom Navigation */}
+      <MobileBottomNav
+        activeTab={activeTab}
+        onTabChange={(tab) => {
+          setActiveTab(tab);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        userRole={currentUser?.role}
+        pendingTasksCount={pendingTasksCount}
+      />
 
       {/* Footer */}
       <Footer settings={settings} />

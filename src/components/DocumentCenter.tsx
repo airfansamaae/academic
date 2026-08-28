@@ -17,8 +17,6 @@ import {
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
-  LayoutGrid,
-  List,
 } from 'lucide-react';
 import { User, DocumentItem, DocumentCategory } from '../types';
 import {
@@ -50,9 +48,6 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<'ALL' | DocumentCategory>('ALL');
-
-  // Display Density / Size Mode ('EXPANDED' cards vs 'COMPACT' list rows)
-  const [viewMode, setViewMode] = useState<'EXPANDED' | 'COMPACT'>('EXPANDED');
 
   // Collapsed Category Sections state: true = collapsed, false = expanded
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
@@ -124,22 +119,20 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
     return groups;
   }, [filteredDocuments, selectedCategory]);
 
-  // Expand All Categories and switch to Expanded display
+  // Expand All Categories
   const handleExpandAll = () => {
     setCollapsedCategories({});
-    setViewMode('EXPANDED');
-    notifyInfo('ขยายการแสดงผลเอกสารทั้งหมดแล้ว');
+    notifyInfo('ขยายหมวดหมู่เอกสารทั้งหมดแล้ว');
   };
 
-  // Collapse All Categories and switch to Compact display
+  // Collapse All Categories
   const handleCollapseAll = () => {
     const allCollapsed: Record<string, boolean> = {
       SAMPLE_DOC: true,
       OFFICIAL_ORDER: true,
     };
     setCollapsedCategories(allCollapsed);
-    setViewMode('COMPACT');
-    notifyInfo('ย่อการแสดงผลเอกสารทั้งหมดแล้ว');
+    notifyInfo('ย่อหมวดหมู่เอกสารทั้งหมดแล้ว');
   };
 
   const toggleCategory = (catKey: string) => {
@@ -438,36 +431,6 @@ ${doc.description || 'เอกสารศูนย์วิชาการพ�
               </button>
             </div>
 
-            {/* View Mode Density Toggle */}
-            <div className="flex items-center space-x-1 bg-slate-100/90 p-1 rounded-2xl border border-slate-200">
-              <button
-                type="button"
-                onClick={() => setViewMode('EXPANDED')}
-                className={`p-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1 ${
-                  viewMode === 'EXPANDED'
-                    ? 'bg-white text-amber-600 shadow-2xs'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-                title="มุมมองการ์ดขยายเต็ม"
-              >
-                <LayoutGrid className="w-4 h-4" />
-                <span className="hidden sm:inline text-[11px]">การ์ด</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('COMPACT')}
-                className={`p-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1 ${
-                  viewMode === 'COMPACT'
-                    ? 'bg-white text-purple-600 shadow-2xs'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-                title="มุมมองรายการย่อกระชับ"
-              >
-                <List className="w-4 h-4" />
-                <span className="hidden sm:inline text-[11px]">รายการ</span>
-              </button>
-            </div>
-
             {isAdmin && (
               <button
                 onClick={handleOpenAdd}
@@ -561,11 +524,7 @@ ${doc.description || 'เอกสารศูนย์วิชาการพ�
             />
           </div>
           <div className="text-xs text-slate-500 font-medium flex items-center space-x-2">
-            <span>แสดงเอกสาร: <strong className="text-slate-800">{filteredDocuments.length}</strong> รายการ</span>
-            <span className="text-slate-300">•</span>
-            <span className="text-slate-400">
-              โหมด: <strong className="text-slate-700">{viewMode === 'EXPANDED' ? 'ขยาย (การ์ด)' : 'ย่อ (รายการกระชับ)'}</strong>
-            </span>
+            <span>แสดงเอกสารทั้งหมด: <strong className="text-slate-800">{filteredDocuments.length}</strong> รายการ</span>
           </div>
         </div>
       </div>
@@ -613,152 +572,89 @@ ${doc.description || 'เอกสารศูนย์วิชาการพ�
               </div>
             </div>
 
-            {/* Category Body (Visible when not collapsed) */}
+            {/* Category Body (List Mode) */}
             {!isCollapsed && (
               <div className="p-4 sm:p-5">
                 {group.docs.length === 0 ? (
                   <div className="text-center py-8 text-slate-400 text-xs">
                     ไม่พบรายการเอกสารในหมวดหมู่นี้
                   </div>
-                ) : viewMode === 'EXPANDED' ? (
-                  /* Expanded Grid Card Mode */
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                ) : (
+                  /* Easy-to-read List Mode */
+                  <div className="divide-y divide-slate-100 border border-slate-200/80 rounded-2xl overflow-hidden shadow-2xs">
                     {group.docs.map((doc) => {
                       const isSampleDoc = doc.category === 'SAMPLE_DOC';
                       return (
                         <div
                           key={doc.id}
-                          className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between"
+                          className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white hover:bg-slate-50/90 gap-3 transition-colors"
                         >
-                          <div className="space-y-3">
-                            <div className="flex items-start justify-between gap-2">
-                              <span
-                                className={`text-[11px] font-bold px-2.5 py-0.5 rounded-md border ${
-                                  isSampleDoc
-                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                    : 'bg-purple-50 text-purple-700 border-purple-200'
-                                }`}
-                              >
-                                {isSampleDoc ? '📄 1. เอกสารตัวอย่าง' : '📜 2. หนังสือคำสั่ง'}
-                              </span>
-
-                              {isAdmin && (
-                                <div className="flex items-center space-x-1">
-                                  <button
-                                    onClick={() => handleOpenEdit(doc)}
-                                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                                    title="แก้ไขเอกสาร"
-                                  >
-                                    <Edit3 className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteDoc(doc.id)}
-                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                    title="ลบเอกสาร"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </div>
+                          <div className="flex items-start space-x-3.5 min-w-0 flex-1">
+                            <div className="w-10 h-10 rounded-xl bg-slate-100/90 border border-slate-200 flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
+                              {doc.fileType === 'PDF' ? (
+                                <FileText className="w-5 h-5 text-rose-500" />
+                              ) : doc.fileType === 'XLSX' || doc.fileType === 'XLS' ? (
+                                <FileSpreadsheet className="w-5 h-5 text-emerald-500" />
+                              ) : (
+                                <File className="w-5 h-5 text-purple-500" />
                               )}
                             </div>
-
-                            <div>
-                              <h3 className="text-sm sm:text-base font-bold text-slate-900 leading-snug">
-                                {doc.title}
-                              </h3>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center space-x-2 flex-wrap gap-1">
+                                <span
+                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-md border shrink-0 ${
+                                    isSampleDoc
+                                      ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                      : 'bg-purple-50 text-purple-700 border-purple-200'
+                                  }`}
+                                >
+                                  {isSampleDoc ? 'เอกสารตัวอย่าง' : 'หนังสือคำสั่ง'}
+                                </span>
+                                <h4 className="text-sm font-bold text-slate-900 leading-snug">
+                                  {doc.title}
+                                </h4>
+                              </div>
                               {doc.description && (
                                 <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
                                   {doc.description}
                                 </p>
                               )}
-                            </div>
-
-                            {/* File badge details */}
-                            <div className="p-2.5 bg-slate-50/90 rounded-xl border border-slate-100 flex items-center justify-between text-xs text-slate-600">
-                              <div className="flex items-center space-x-2 min-w-0 pr-2">
-                                {doc.fileType === 'PDF' ? (
-                                  <FileText className="w-4 h-4 text-rose-500 shrink-0" />
-                                ) : doc.fileType === 'XLSX' || doc.fileType === 'XLS' ? (
-                                  <FileSpreadsheet className="w-4 h-4 text-emerald-500 shrink-0" />
-                                ) : (
-                                  <File className="w-4 h-4 text-purple-500 shrink-0" />
-                                )}
-                                <span className="font-medium text-slate-700 truncate">{doc.fileName}</span>
-                              </div>
-                              <span className="text-[11px] text-slate-400 shrink-0 font-mono font-medium">
-                                {doc.fileSize}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Download CTA Button */}
-                          <div className="pt-4 mt-3 border-t border-slate-100">
-                            <button
-                              onClick={() => handleDownload(doc)}
-                              className="w-full btn-glow-purple flex items-center justify-center space-x-2 py-2.5 px-4 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-xs transition-all cursor-pointer whitespace-nowrap"
-                            >
-                              <Download className="w-4 h-4 shrink-0" />
-                              <span>ดาวน์โหลดเอกสาร</span>
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  /* Compact List Mode (ย่อขนาดแถวกระชับ) */
-                  <div className="divide-y divide-slate-100 border border-slate-200/80 rounded-2xl overflow-hidden">
-                    {group.docs.map((doc) => {
-                      return (
-                        <div
-                          key={doc.id}
-                          className="flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:px-4 bg-white hover:bg-slate-50/80 gap-3 transition-colors"
-                        >
-                          <div className="flex items-center space-x-3 min-w-0 flex-1">
-                            <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                              {doc.fileType === 'PDF' ? (
-                                <FileText className="w-4 h-4 text-rose-500" />
-                              ) : doc.fileType === 'XLSX' || doc.fileType === 'XLS' ? (
-                                <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
-                              ) : (
-                                <File className="w-4 h-4 text-purple-500" />
-                              )}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <h4 className="text-xs sm:text-sm font-bold text-slate-800 truncate">
-                                {doc.title}
-                              </h4>
-                              <p className="text-[11px] text-slate-400 truncate">
-                                ไฟล์: {doc.fileName} • {doc.fileSize}
+                              <p className="text-[11px] text-slate-400 mt-1 flex items-center space-x-2">
+                                <span>ไฟล์: <strong className="text-slate-600 font-medium">{doc.fileName}</strong></span>
+                                <span>•</span>
+                                <span>ขนาด: <span className="font-mono text-slate-500">{doc.fileSize}</span></span>
                               </p>
                             </div>
                           </div>
 
-                          <div className="flex items-center space-x-2 shrink-0">
+                          <div className="flex items-center space-x-2 shrink-0 self-end sm:self-center">
                             {isAdmin && (
                               <div className="flex items-center space-x-1 mr-1">
                                 <button
+                                  type="button"
                                   onClick={() => handleOpenEdit(doc)}
-                                  className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                                  title="แก้ไข"
+                                  className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors cursor-pointer"
+                                  title="แก้ไขข้อมูลเอกสาร"
                                 >
-                                  <Edit3 className="w-3.5 h-3.5" />
+                                  <Edit3 className="w-4 h-4" />
                                 </button>
                                 <button
+                                  type="button"
                                   onClick={() => handleDeleteDoc(doc.id)}
-                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                  title="ลบ"
+                                  className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                                  title="ลบเอกสาร"
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <Trash2 className="w-4 h-4" />
                                 </button>
                               </div>
                             )}
 
                             <button
+                              type="button"
                               onClick={() => handleDownload(doc)}
-                              className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold shadow-2xs transition-all cursor-pointer"
+                              className="inline-flex items-center space-x-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer active:scale-95 whitespace-nowrap"
                             >
-                              <Download className="w-3.5 h-3.5" />
+                              <Download className="w-4 h-4" />
                               <span>ดาวน์โหลด</span>
                             </button>
                           </div>

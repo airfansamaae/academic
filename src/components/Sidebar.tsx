@@ -83,7 +83,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   return (
-    <aside className="w-full lg:w-72 shrink-0 space-y-4">
+    <aside className="hidden lg:block w-full lg:w-72 shrink-0 space-y-4">
       {/* Navigation Card */}
       <div className="bg-white rounded-3xl border border-slate-200/80 p-4 sm:p-5 shadow-xs">
         <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">

@@ -304,7 +304,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // 1. Announcements: Active announcements (from past 14 days up to 60 days ahead)
+    // 1. Announcements: Upcoming within 15 days
     announcements.forEach((ann) => {
       if (!ann.date) return;
       const parts = ann.date.split('-').map(Number);
@@ -315,8 +315,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
       const diffTime = annDate.getTime() - today.getTime();
       const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
-      // Show announcements if active within recent 14 days or upcoming 60 days
-      if (diffDays >= -14 && diffDays <= 60) {
+      // Show announcements if upcoming within 15 days (including today)
+      if (diffDays >= -1 && diffDays <= 15) {
         list.push({
           id: `ann-${ann.id}`,
           category: 'ANNOUNCEMENT',
@@ -330,7 +330,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       }
     });
 
-    // 2. Tasks with due dates (from past 7 days up to 30 days ahead, or any unsubmitted tasks)
+    // 2. Tasks with due dates: Upcoming within 15 days
     tasks.forEach((task) => {
       if (!task.dueDate) return;
       const parts = task.dueDate.split('-').map(Number);
@@ -343,8 +343,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       const isSubmitted = !isAdmin && currentUser ? hasMemberSubmitted(task.id, currentUser.id) : false;
 
-      // Show tasks if due within 30 days, or overdue, or pending
-      if (diffDays >= -14 && diffDays <= 30) {
+      // Show tasks if due within upcoming 15 days
+      if (diffDays >= -1 && diffDays <= 15) {
         list.push({
           id: `task-${task.id}`,
           category: 'TASK',
@@ -591,131 +591,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
       )}
-
-      {/* Stats Metric Cards (Geometric Balance Style) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Total Tasks */}
-        <div className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-xs hover:shadow-md transition-all group">
-          <div className="flex justify-between items-start">
-            <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider">
-              Total Assigned
-            </span>
-            <span className="text-purple-600 bg-purple-50 text-[10px] px-2 py-0.5 rounded-md font-bold border border-purple-100">
-              Active
-            </span>
-          </div>
-          <div className="text-3xl font-bold text-slate-800 mt-2">{tasks.length}</div>
-          <p className="text-[11px] text-slate-400 mt-0.5">รวมงานวิชาการประจำภาคเรียน</p>
-          <div className="h-1.5 w-full bg-slate-100 rounded-full mt-4 overflow-hidden">
-            <div className="h-full bg-purple-500 rounded-full w-full"></div>
-          </div>
-        </div>
-
-        {/* Card 2: Submitted */}
-        <div className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-xs hover:shadow-md transition-all group">
-          <div className="flex justify-between items-start">
-            <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider">
-              {isAdmin ? 'Total Submissions' : 'Your Submissions'}
-            </span>
-            <span className="text-emerald-600 bg-emerald-50 text-[10px] px-2 py-0.5 rounded-md font-bold border border-emerald-100">
-              {isAdmin ? 'System Active' : 'Completed'}
-            </span>
-          </div>
-          <div className="text-3xl font-bold text-emerald-600 mt-2">
-            {isAdmin
-              ? `${submissions.length}`
-              : `${
-                  submissions.filter((s) => s.memberId === currentUser?.id).length
-                }`}
-            <span className="text-sm font-normal text-slate-400 ml-1.5">
-              / {tasks.length}
-            </span>
-          </div>
-          <p className="text-[11px] text-slate-400 mt-0.5">
-            {isAdmin ? 'ผลงานทั้งหมดที่ส่งเข้าระบบ' : 'สถานะการส่งงานของคุณ'}
-          </p>
-          <div className="h-1.5 w-full bg-slate-100 rounded-full mt-4 overflow-hidden">
-            <div
-              className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-              style={{
-                width: `${
-                  tasks.length > 0
-                    ? Math.min(
-                        100,
-                        Math.round(
-                          ((isAdmin
-                            ? submissions.length / Math.max(1, tasks.length * (activeMembers.length || 1))
-                            : submissions.filter((s) => s.memberId === currentUser?.id).length /
-                              Math.max(1, tasks.length)) *
-                            100)
-                        )
-                      )
-                    : 0
-                }%`,
-              }}
-            ></div>
-          </div>
-        </div>
-
-        {/* Card 3: Pending */}
-        <div className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-xs hover:shadow-md transition-all group">
-          <div className="flex justify-between items-start">
-            <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider">
-              {isAdmin ? 'Pending Tasks' : 'Unsubmitted Tasks'}
-            </span>
-            <span className="text-rose-600 bg-rose-50 text-[10px] px-2 py-0.5 rounded-md font-bold border border-rose-100">
-              Action Req.
-            </span>
-          </div>
-          <div className="text-3xl font-bold text-rose-600 mt-2">
-            {isAdmin ? `${adminPendingSummary.length}` : `${memberPendingTasks.length}`}
-          </div>
-          <p className="text-[11px] text-slate-400 mt-0.5">
-            {memberPendingTasks.some((t) => isPastDue(t.dueDate))
-              ? '⚠️ มีงานเลยกำหนดส่ง'
-              : 'ตรวจสอบกำหนดส่งตามปฏิทิน'}
-          </p>
-          <div className="h-1.5 w-full bg-slate-100 rounded-full mt-4 overflow-hidden">
-            <div
-              className="h-full bg-rose-500 rounded-full"
-              style={{
-                width: `${
-                  tasks.length > 0
-                    ? Math.min(
-                        100,
-                        Math.round(
-                          ((isAdmin ? adminPendingSummary.length : memberPendingTasks.length) /
-                            Math.max(1, tasks.length)) *
-                            100
-                        )
-                      )
-                    : 0
-                }%`,
-              }}
-            ></div>
-          </div>
-        </div>
-
-        {/* Card 4: Active Teachers */}
-        <div className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-xs hover:shadow-md transition-all group">
-          <div className="flex justify-between items-start">
-            <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider">
-              Faculty Members
-            </span>
-            <span className="text-blue-600 bg-blue-50 text-[10px] px-2 py-0.5 rounded-md font-bold border border-blue-100">
-              Verified
-            </span>
-          </div>
-          <div className="text-3xl font-bold text-slate-800 mt-2">
-            {activeMembers.length}
-            <span className="text-sm font-normal text-slate-400 ml-1.5">ท่าน</span>
-          </div>
-          <p className="text-[11px] text-slate-400 mt-0.5">สมาชิกที่ได้รับการอนุมัติใช้งาน</p>
-          <div className="h-1.5 w-full bg-slate-100 rounded-full mt-4 overflow-hidden">
-            <div className="h-full bg-blue-500 rounded-full w-full"></div>
-          </div>
-        </div>
-      </div>
 
       {/* Main Calendar View Section */}
       <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-6 shadow-xs">

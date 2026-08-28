@@ -310,6 +310,12 @@ export class CloudflareApiService {
         }),
       }, 3500).catch(() => {});
 
+      await this.fetchWithTimeout(`${this.workerUrl}/api/tasks/${id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, _deleted: true }),
+      }, 3500).catch(() => {});
+
       await this.fetchWithTimeout(`${this.workerUrl}/api/announcements/${id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
