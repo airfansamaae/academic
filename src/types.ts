@@ -48,6 +48,8 @@ export interface SubmissionFile {
   size: number;
   type: string;
   gDriveUrl: string;
+  gDriveFileId?: string;
+  targetFolderId?: string;
   uploadedAt: string;
   previewUrl?: string;
 }

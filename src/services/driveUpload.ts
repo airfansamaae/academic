@@ -43,14 +43,15 @@ export function isProtectedRootFolder(folderIdOrUrl?: string): boolean {
 }
 
 export const GOOGLE_APPS_SCRIPT_CODE = `/**
- * Google Apps Script Webhook API v2 (ระบบจัดการ Google Drive แบบเรียลไทม์)
+ * Google Apps Script Webhook API v3 (ระบบจัดการ Google Drive แบบเรียลไทม์)
  * รองรับ:
- * 1. สร้างโฟลเดอร์ตามชื่องานมอบหมายอัตโนมัติ (createFolder)
- * 2. อัปโหลดไฟล์ตรงเข้าโฟลเดอร์เป้าหมาย (upload)
- * 3. ลบไฟล์ออกจาก Google Drive อัตโนมัติ (deleteFile)
- * 4. ลบโฟลเดอร์ออกจาก Google Drive อัตโนมัติ (deleteFolder)
- * 5. กู้คืนโฟลเดอร์หลักออกจากถังขยะอัตโนมัติ (restoreRootFolders)
- * 6. ตรวจสอบสถานะการเชื่อมต่อ (doGet)
+ * 1. ดาวน์โหลดไฟล์จาก Google Drive ตรงสู่ผู้ใช้แบบสมบูรณ์ (downloadFile / getFile) - รองรับ Word .docx, PDF, Excel, รูปภาพ ทุกชนิด
+ * 2. สร้างโฟลเดอร์ตามชื่องานมอบหมายอัตโนมัติ (createFolder)
+ * 3. อัปโหลดไฟล์ตรงเข้าโฟลเดอร์เป้าหมาย (upload)
+ * 4. ลบไฟล์ออกจาก Google Drive อัตโนมัติ (deleteFile) - ลบเฉพาะไฟล์ ห้ามลบโฟลเดอร์เด็ดขาด
+ * 5. ป้องกันและห้ามลบโฟลเดอร์ทุกกรณี (deleteFolder -> Disabled / Protected)
+ * 6. กู้คืนโฟลเดอร์หลักออกจากถังขยะอัตโนมัติ (restoreRootFolders)
+ * 7. ตรวจสอบสถานะการเชื่อมต่อ (doGet)
  */
 
 var PROTECTED_ROOT_IDS = [
@@ -98,7 +99,68 @@ function doPost(e) {
     }
 
     // ----------------------------------------------------
-    // 1. ACTION: สร้างโฟลเดอร์ตามหัวข้องานมอบหมาย
+    // 1. ACTION: ดาวน์โหลดดึงข้อมูลไฟล์จาก Google Drive (Word, PDF, Excel, รูปภาพ ฯลฯ)
+    // ----------------------------------------------------
+    if (action === 'downloadFile' || action === 'getFile' || action === 'download') {
+      var dlFileId = data.fileId;
+      var dlFileName = data.fileName || data.name;
+      var dlFolderId = data.folderId || data.targetFolderId;
+
+      if (!dlFileId && data.fileUrl) {
+        var match = data.fileUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) ||
+                    data.fileUrl.match(/id=([a-zA-Z0-9_-]+)/);
+        if (match) dlFileId = match[1];
+      }
+
+      var targetFile = null;
+      if (dlFileId && dlFileId.length >= 20) {
+        try {
+          targetFile = DriveApp.getFileById(dlFileId);
+        } catch (errId) {}
+      }
+
+      if (!targetFile && dlFileName) {
+        try {
+          var sFolder = dlFolderId ? DriveApp.getFolderById(dlFolderId) : DriveApp.getRootFolder();
+          var filesIterator = sFolder.getFilesByName(dlFileName);
+          if (filesIterator.hasNext()) {
+            targetFile = filesIterator.next();
+          }
+        } catch (errName) {}
+      }
+
+      if (targetFile) {
+        try {
+          var blob = targetFile.getBlob();
+          var base64Data = Utilities.base64Encode(blob.getBytes());
+          var mimeType = blob.getContentType() || targetFile.getMimeType() || 'application/octet-stream';
+          
+          return ContentService.createTextOutput(JSON.stringify({
+            status: 'success',
+            action: 'downloadFile',
+            fileId: targetFile.getId(),
+            fileName: targetFile.getName(),
+            mimeType: mimeType,
+            size: targetFile.getSize(),
+            data: base64Data,
+            downloadUrl: targetFile.getDownloadUrl() || ('https://drive.google.com/uc?export=download&id=' + targetFile.getId())
+          })).setMimeType(ContentService.MimeType.JSON);
+        } catch (errBlob) {
+          return ContentService.createTextOutput(JSON.stringify({
+            status: 'error',
+            message: 'Failed to read file binary: ' + errBlob.toString()
+          })).setMimeType(ContentService.MimeType.JSON);
+        }
+      }
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'error',
+        message: 'File not found in Google Drive'
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ----------------------------------------------------
+    // 2. ACTION: สร้างโฟลเดอร์ตามหัวข้องานมอบหมาย
     // ----------------------------------------------------
     if (action === 'createFolder') {
       var folderName = data.folderName || data.name || 'งานที่มอบหมาย';
@@ -137,14 +199,16 @@ function doPost(e) {
     }
 
     // ----------------------------------------------------
-    // 2. ACTION: ลบไฟล์ออกจาก Google Drive (ย้ายลงถังขยะ)
+    // 3. ACTION: ลบเฉพาะไฟล์ออกจาก Google Drive (ห้ามลบโฟลเดอร์เด็ดขาด)
     // ----------------------------------------------------
     if (action === 'deleteFile' || action === 'delete') {
       var fileId = data.fileId;
+      var fileName = data.fileName || data.name;
+      var folderId = data.folderId || data.targetFolderId;
+
       if (!fileId && data.fileUrl) {
         var match = data.fileUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) ||
-                    data.fileUrl.match(/id=([a-zA-Z0-9_-]+)/) ||
-                    data.fileUrl.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+                    data.fileUrl.match(/id=([a-zA-Z0-9_-]+)/);
         if (match) fileId = match[1];
       }
 
@@ -154,13 +218,20 @@ function doPost(e) {
           ensureRootFoldersRestored();
           return ContentService.createTextOutput(JSON.stringify({
             status: 'warning',
-            message: 'Protected root folder cannot be deleted'
+            message: 'Protected folder cannot be deleted'
           })).setMimeType(ContentService.MimeType.JSON);
         }
 
         try {
           var fileToDelete = DriveApp.getFileById(fileId);
-          fileToDelete.setTrashed(true); // ย้ายลงถังขยะ Google Drive
+          // ความปลอดภัย: ป้องกันไม่ให้ลบถ้าเป็นโฟลเดอร์
+          if (fileToDelete.getMimeType() === MimeType.FOLDER || fileToDelete.getMimeType() === 'application/vnd.google-apps.folder') {
+            return ContentService.createTextOutput(JSON.stringify({
+              status: 'warning',
+              message: 'Folder deletion is prohibited by policy. Folder preserved.'
+            })).setMimeType(ContentService.MimeType.JSON);
+          }
+          fileToDelete.setTrashed(true); // ย้ายลงถังขยะ Google Drive เฉพาะไฟล์
           return ContentService.createTextOutput(JSON.stringify({
             status: 'success',
             action: 'deleteFile',
@@ -168,63 +239,74 @@ function doPost(e) {
             message: 'File trashed successfully'
           })).setMimeType(ContentService.MimeType.JSON);
         } catch (err) {
+          if (fileName) {
+            try {
+              var searchFolder = folderId ? DriveApp.getFolderById(folderId) : DriveApp.getRootFolder();
+              var files = searchFolder.getFilesByName(fileName);
+              var deletedCount = 0;
+              while (files.hasNext()) {
+                var f = files.next();
+                if (f.getMimeType() !== MimeType.FOLDER && f.getMimeType() !== 'application/vnd.google-apps.folder') {
+                  f.setTrashed(true);
+                  deletedCount++;
+                }
+              }
+              if (deletedCount > 0) {
+                return ContentService.createTextOutput(JSON.stringify({
+                  status: 'success',
+                  action: 'deleteFile',
+                  message: 'File trashed by name successfully (' + deletedCount + ' files)'
+                })).setMimeType(ContentService.MimeType.JSON);
+              }
+            } catch (e2) {}
+          }
           return ContentService.createTextOutput(JSON.stringify({
             status: 'warning',
             message: 'File not found or already deleted: ' + err.toString()
           })).setMimeType(ContentService.MimeType.JSON);
         }
+      } else if (fileName) {
+        try {
+          var targetFolder = folderId ? DriveApp.getFolderById(folderId) : DriveApp.getRootFolder();
+          var filesByName = targetFolder.getFilesByName(fileName);
+          var delCount = 0;
+          while (filesByName.hasNext()) {
+            var fileItem = filesByName.next();
+            if (fileItem.getMimeType() !== MimeType.FOLDER && fileItem.getMimeType() !== 'application/vnd.google-apps.folder') {
+              fileItem.setTrashed(true);
+              delCount++;
+            }
+          }
+          if (delCount > 0) {
+            return ContentService.createTextOutput(JSON.stringify({
+              status: 'success',
+              action: 'deleteFile',
+              message: 'File trashed by name (' + delCount + ' items)'
+            })).setMimeType(ContentService.MimeType.JSON);
+          }
+        } catch (e3) {}
       }
+
       return ContentService.createTextOutput(JSON.stringify({
         status: 'error',
-        message: 'Invalid file ID for deletion'
+        message: 'Invalid file ID or name for deletion'
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
     // ----------------------------------------------------
-    // 3. ACTION: ลบโฟลเดอร์ออกจาก Google Drive (ย้ายลงถังขยะ)
+    // 4. ACTION: นโยบายความปลอดภัยสูงสุด "ห้ามลบโฟลเดอร์ทุกกรณี"
     // ----------------------------------------------------
     if (action === 'deleteFolder') {
-      var folderId = data.folderId;
-      if (!folderId && data.folderUrl) {
-        var matchFolder = data.folderUrl.match(/\/folders\/([a-zA-Z0-9_-]+)/) ||
-                          data.folderUrl.match(/id=([a-zA-Z0-9_-]+)/);
-        if (matchFolder) folderId = matchFolder[1];
-      }
-
-      if (folderId && folderId.length >= 20) {
-        // ระบบความปลอดภัยสูงสุด: ห้ามลบโฟลเดอร์หลักของระบบเด็ดขาด หากได้รับคำสั่งจะทำการกู้คืนทันที
-        if (PROTECTED_ROOT_IDS.indexOf(folderId) > -1) {
-          ensureRootFoldersRestored();
-          return ContentService.createTextOutput(JSON.stringify({
-            status: 'warning',
-            message: 'Protected root folder cannot be deleted and has been preserved in My Drive'
-          })).setMimeType(ContentService.MimeType.JSON);
-        }
-
-        try {
-          var folderToDelete = DriveApp.getFolderById(folderId);
-          folderToDelete.setTrashed(true); // ย้ายลงถังขยะ Google Drive เฉพาะโฟลเดอร์ย่อย
-          return ContentService.createTextOutput(JSON.stringify({
-            status: 'success',
-            action: 'deleteFolder',
-            folderId: folderId,
-            message: 'Folder trashed successfully'
-          })).setMimeType(ContentService.MimeType.JSON);
-        } catch (err) {
-          return ContentService.createTextOutput(JSON.stringify({
-            status: 'warning',
-            message: 'Folder not found or already deleted: ' + err.toString()
-          })).setMimeType(ContentService.MimeType.JSON);
-        }
-      }
+      ensureRootFoldersRestored();
       return ContentService.createTextOutput(JSON.stringify({
-        status: 'error',
-        message: 'Invalid folder ID for deletion'
+        status: 'success',
+        action: 'deleteFolder',
+        message: 'Folder deletion is strictly disabled to preserve all folders and admin topic folders in Google Drive.'
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
     // ----------------------------------------------------
-    // 4. ACTION: อัปโหลดไฟล์เข้าสู่โฟลเดอร์ Google Drive
+    // 5. ACTION: อัปโหลดไฟล์เข้าสู่โฟลเดอร์ Google Drive
     // ----------------------------------------------------
     if (data.base64) {
       var base64Clean = data.base64;
@@ -275,11 +357,33 @@ function doPost(e) {
 
 function doGet(e) {
   ensureRootFoldersRestored();
+
+  // รองรับดาวน์โหลดไฟล์ผ่าน GET request ด้วย
+  if (e && e.parameter && (e.parameter.action === 'downloadFile' || e.parameter.fileId)) {
+    var fId = e.parameter.fileId;
+    if (fId && fId.length >= 20) {
+      try {
+        var gFile = DriveApp.getFileById(fId);
+        var gBlob = gFile.getBlob();
+        var gBase64 = Utilities.base64Encode(gBlob.getBytes());
+        return ContentService.createTextOutput(JSON.stringify({
+          status: 'success',
+          action: 'downloadFile',
+          fileId: gFile.getId(),
+          fileName: gFile.getName(),
+          mimeType: gBlob.getContentType() || gFile.getMimeType(),
+          size: gFile.getSize(),
+          data: gBase64
+        })).setMimeType(ContentService.MimeType.JSON);
+      } catch (eGet) {}
+    }
+  }
+
   return ContentService.createTextOutput(JSON.stringify({
     status: 'online',
-    system: 'Academic Management Google Drive API v2',
-    version: '2.0',
-    capabilities: ['createFolder', 'deleteFile', 'deleteFolder', 'restoreRootFolders', 'upload'],
+    system: 'Academic Management Google Drive API v3 (Enhanced Real-Time Download & Strict Folder Protection)',
+    version: '3.0',
+    capabilities: ['downloadFile', 'createFolder', 'deleteFile', 'restoreRootFolders', 'upload'],
     timestamp: new Date().toISOString()
   })).setMimeType(ContentService.MimeType.JSON);
 }`;
@@ -534,23 +638,32 @@ export async function uploadFileToGoogleDrive(
  */
 export async function deleteGoogleDriveFile(
   fileIdOrUrl: string,
+  fileName?: string,
+  folderId?: string,
   webhookUrl?: string
 ): Promise<boolean> {
   const activeWebhook = webhookUrl || getActiveGasWebhookUrl();
   const fileId = extractDriveFileId(fileIdOrUrl);
-  if (!fileId || fileId.startsWith('sample') || fileId.startsWith('doc_')) {
+  if (!fileId && !fileName) {
+    return true;
+  }
+  if (fileId && (fileId.startsWith('sample') || fileId.startsWith('doc_') || fileId.startsWith('task_folder_'))) {
     return true;
   }
 
   try {
-    const payload = {
+    const payload: Record<string, any> = {
       action: 'deleteFile',
-      fileId: fileId,
+      fileId: fileId || undefined,
       fileUrl: fileIdOrUrl,
+      fileName: fileName || undefined,
+      name: fileName || undefined,
+      folderId: folderId || undefined,
+      targetFolderId: folderId || undefined,
     };
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
     const res = await fetch(activeWebhook, {
       method: 'POST',
@@ -573,40 +686,68 @@ export async function deleteGoogleDriveFile(
 }
 
 /**
- * Delete folder from Google Drive via GAS Webhook
+ * Triggers native in-browser file download from a Blob
  */
-export async function deleteGoogleDriveFolder(
-  folderIdOrUrl: string,
+export function triggerNativeBlobDownload(blob: Blob, fileName: string): void {
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.style.display = 'none';
+  a.href = blobUrl;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    if (document.body.contains(a)) {
+      document.body.removeChild(a);
+    }
+    URL.revokeObjectURL(blobUrl);
+  }, 1000);
+}
+
+/**
+ * Converts a base64 string to a Blob with exact MIME type
+ */
+export function base64ToBlob(base64Data: string, mimeType: string = 'application/octet-stream'): Blob {
+  let cleanBase64 = base64Data;
+  if (cleanBase64.includes(',')) {
+    const parts = cleanBase64.split(',');
+    cleanBase64 = parts[1];
+  }
+  const byteCharacters = atob(cleanBase64);
+  const byteNumbers = new Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  }
+  const byteArray = new Uint8Array(byteNumbers);
+  return new Blob([byteArray], { type: mimeType });
+}
+
+/**
+ * Downloads a file directly from Google Drive via GAS Webhook API
+ * Returns real full binary data (Word .docx, PDF, Excel, Images, etc.)
+ */
+export async function downloadGoogleDriveFile(
+  fileIdOrUrl: string,
+  fileName?: string,
+  folderId?: string,
   webhookUrl?: string
-): Promise<boolean> {
-  if (!folderIdOrUrl) return true;
-
-  // SAFETY: Never delete protected root/main system folders (e.g. วิชาการ Z)
-  if (isProtectedRootFolder(folderIdOrUrl)) {
-    console.warn('[PROTECTION] Refused to delete root/system folder:', folderIdOrUrl);
-    return true;
-  }
-
+): Promise<{ success: boolean; blob?: Blob; fileName?: string; mimeType?: string; error?: string }> {
   const activeWebhook = webhookUrl || getActiveGasWebhookUrl();
-  const folderId = extractDriveFileId(folderIdOrUrl);
-  if (!folderId || folderId.startsWith('task_folder_')) {
-    return true;
-  }
-
-  if (isProtectedRootFolder(folderId)) {
-    console.warn('[PROTECTION] Refused to delete root/system folder ID:', folderId);
-    return true;
-  }
+  const fileId = extractDriveFileId(fileIdOrUrl);
 
   try {
-    const payload = {
-      action: 'deleteFolder',
-      folderId: folderId,
-      folderUrl: folderIdOrUrl,
+    const payload: Record<string, any> = {
+      action: 'downloadFile',
+      fileId: fileId || undefined,
+      fileUrl: fileIdOrUrl,
+      fileName: fileName || undefined,
+      name: fileName || undefined,
+      folderId: folderId || undefined,
+      targetFolderId: folderId || undefined,
     };
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     const res = await fetch(activeWebhook, {
       method: 'POST',
@@ -617,15 +758,62 @@ export async function deleteGoogleDriveFolder(
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
+
     if (res.ok) {
-      const data = await res.json().catch(() => null);
-      return data?.status === 'success' || res.ok;
+      const result = await res.json().catch(() => null);
+      if (result && result.status === 'success' && result.data) {
+        const mimeType = result.mimeType || 'application/octet-stream';
+        const finalName = result.fileName || fileName || 'document';
+        const blob = base64ToBlob(result.data, mimeType);
+        return {
+          success: true,
+          blob,
+          fileName: finalName,
+          mimeType,
+        };
+      }
     }
-    return false;
   } catch (err) {
-    console.warn('Google Drive folder deletion request error:', err);
-    return false;
+    console.warn('GAS Webhook direct binary download fallback:', err);
   }
+
+  // Fallback 1: If file has valid Drive ID, try direct Google Drive content endpoint
+  if (fileId && !fileId.startsWith('sample') && fileId !== GDRIVE_FOLDER_ID && !isProtectedRootFolder(fileId)) {
+    try {
+      const directUrl = `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`;
+      const res = await fetch(directUrl, { mode: 'cors' });
+      if (res.ok) {
+        const blob = await res.blob();
+        if (blob.size > 0) {
+          return {
+            success: true,
+            blob,
+            fileName: fileName || 'downloaded_file',
+            mimeType: blob.type || 'application/octet-stream',
+          };
+        }
+      }
+    } catch {}
+  }
+
+  return {
+    success: false,
+    error: 'ไม่สามารถดึงไฟล์จาก Google Drive ได้โดยตรง',
+  };
+}
+
+/**
+ * Delete folder from Google Drive via GAS Webhook
+ * STRICT SAFETY RULE: All Google Drive folders (root, admin topics, etc.) are permanently preserved
+ * Folder deletion is completely disabled to protect users' folder structures.
+ */
+export async function deleteGoogleDriveFolder(
+  folderIdOrUrl: string,
+  webhookUrl?: string
+): Promise<boolean> {
+  // STRICT SAFETY: Do NOT delete any folders in Google Drive under any circumstances
+  console.info('[FOLDER PRESERVATION] Preserving folder in Google Drive:', folderIdOrUrl);
+  return true;
 }
 
 /**

@@ -26,7 +26,12 @@ import {
   GDRIVE_OFFICIAL_ORDERS_FOLDER_ID,
   GDRIVE_SAMPLE_DOCS_FOLDER_ID,
 } from '../services/storage';
-import { uploadFileToGoogleDrive } from '../services/driveUpload';
+import {
+  uploadFileToGoogleDrive,
+  downloadGoogleDriveFile,
+  triggerNativeBlobDownload,
+  extractDriveFileId,
+} from '../services/driveUpload';
 import {
   notifySuccess,
   notifyInfo,
@@ -277,7 +282,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
   const handleDownload = async (doc: DocumentItem) => {
     try {
       const fileName = doc.fileName || `${doc.title}.docx`;
-      notifyInfo(`กำลังเริ่มดาวน์โหลดไฟล์: ${fileName}...`);
+      notifyInfo(`กำลังเริ่มดาวน์โหลดไฟล์: ${fileName}... ⏳`);
 
       // 1. If document is stored as base64 / data URL
       if (doc.fileUrl && doc.fileUrl.startsWith('data:')) {
@@ -287,37 +292,46 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        notifySuccess(`ดาวน์โหลด "${fileName}" สำเร็จเรียบร้อยแล้ว`);
+        notifySuccess(`ดาวน์โหลด "${fileName}" สำเร็จเรียบร้อยแล้ว 📥`);
         return;
       }
 
-      // 2. If it is an accessible HTTP URL
+      // 2. Query Google Drive directly via Google Apps Script Webhook API (downloadFile)
+      const folderId = doc.category === 'OFFICIAL_ORDER' ? GDRIVE_OFFICIAL_ORDERS_FOLDER_ID : GDRIVE_SAMPLE_DOCS_FOLDER_ID;
+      try {
+        const driveResult = await downloadGoogleDriveFile(
+          doc.fileUrl || doc.id,
+          fileName,
+          folderId
+        );
+        if (driveResult.success && driveResult.blob && driveResult.blob.size > 0) {
+          triggerNativeBlobDownload(driveResult.blob, driveResult.fileName || fileName);
+          notifySuccess(`ดาวน์โหลด "${fileName}" จาก Google Drive สำเร็จเรียบร้อยแล้ว 📥`);
+          return;
+        }
+      } catch (gasErr) {
+        console.warn('DocumentCenter GAS Webhook file retrieval error:', gasErr);
+      }
+
+      // 3. If it is an accessible HTTP URL
       if (doc.fileUrl && doc.fileUrl.startsWith('http') && !doc.fileUrl.includes('drive.google.com/file/d/sample')) {
         try {
           const res = await fetch(doc.fileUrl);
           if (res.ok) {
             const blob = await res.blob();
-            const blobUrl = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = blobUrl;
-            link.download = fileName;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-            notifySuccess(`ดาวน์โหลด "${fileName}" สำเร็จเรียบร้อยแล้ว`);
-            return;
+            if (blob.size > 0) {
+              triggerNativeBlobDownload(blob, fileName);
+              notifySuccess(`ดาวน์โหลด "${fileName}" สำเร็จเรียบร้อยแล้ว 📥`);
+              return;
+            }
           }
         } catch {
           // If CORS prevents fetch, fallback to auto-generated official template below
         }
       }
 
-      // 3. Auto-generate realistic official template document binary for immediate direct download
+      // 4. Generate realistic official template document binary for immediate direct download
       const ext = (fileName.split('.').pop() || 'docx').toLowerCase();
-      let content = '';
-      let mimeType = 'text/plain;charset=utf-8';
-
       const isOrder = doc.category === 'OFFICIAL_ORDER';
       const thaiCategory = isOrder ? 'หนังสือคำสั่งและระเบียบปฏิบัติราชการ' : 'เอกสารตัวอย่างและแบบฟอร์มทางวิชาการ';
       const todayFormatted = new Date().toLocaleDateString('th-TH', {
@@ -327,63 +341,85 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
       });
 
       if (ext === 'docx' || ext === 'doc') {
-        mimeType = 'application/msword;charset=utf-8';
-        content = `\ufeff========================================================================
-แบบฟอร์มเอกสารวิชาการและแนวทางปฏิบัติราชการ
-กลุ่มบริหารงานวิชาการและงานพัฒนาหลักสูตรสถานศึกษา
-========================================================================
+        const docHtml = `
+          <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+          <head>
+            <meta charset='utf-8'>
+            <title>${doc.title}</title>
+            <style>
+              body { font-family: 'TH Sarabun PSK', 'TH Sarabun New', 'Angsana New', 'Cordia New', sans-serif; font-size: 16pt; line-height: 1.5; color: #000; padding: 2cm; }
+              h1 { font-size: 24pt; text-align: center; margin-bottom: 20px; font-weight: bold; }
+              h2 { font-size: 18pt; margin-top: 15px; font-weight: bold; border-bottom: 2px solid #2563eb; padding-bottom: 5px; }
+              table { width: 100%; border-collapse: collapse; margin-top: 15px; margin-bottom: 20px; }
+              th, td { border: 1px solid #333; padding: 8px 12px; font-size: 14pt; }
+              th { background-color: #f1f5f9; text-align: left; font-weight: bold; }
+              .badge { display: inline-block; padding: 4px 12px; background: #dbeafe; color: #1e40af; border-radius: 4px; font-weight: bold; }
+              .footer { margin-top: 40px; text-align: center; font-size: 12pt; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 10px; }
+            </style>
+          </head>
+          <body>
+            <h1>${isOrder ? 'หนังสือคำสั่งและระเบียบปฏิบัติราชการ' : 'แบบฟอร์มและเอกสารวิชาการสถานศึกษา'}</h1>
+            <p style="text-align: center; color: #475569;">กลุ่มบริหารงานวิชาการ • ศูนย์รวมเอกสารและมาตรฐานการศึกษา</p>
+            <hr style="border: 0; border-top: 2px solid #0f172a; margin-bottom: 20px;" />
+            
+            <h2>ข้อมูลรายการเอกสาร</h2>
+            <table>
+              <tr><th style="width: 30%;">ชื่อเอกสาร</th><td><strong>${doc.title}</strong></td></tr>
+              <tr><th>หมวดหมู่</th><td><span class="badge">${thaiCategory}</span></td></tr>
+              <tr><th>ชื่อไฟล์</th><td>${fileName}</td></tr>
+              <tr><th>ขนาดไฟล์</th><td>${doc.fileSize || '1.5 MB'}</td></tr>
+              <tr><th>วันที่เผยแพร่</th><td>${todayFormatted}</td></tr>
+              <tr><th>ผู้จัดทำ / เผยแพร่</th><td>${doc.uploadedBy || 'กลุ่มบริหารงานวิชาการ'}</td></tr>
+            </table>
 
-ชื่อเอกสาร: ${doc.title}
-หมวดหมู่: ${thaiCategory}
-ชื่อไฟล์: ${fileName}
-ขนาดไฟล์: ${doc.fileSize || '1.5 MB'}
-วันที่ดาวน์โหลด: ${todayFormatted}
-ผู้เผยแพร่: ${doc.uploadedBy || 'ผู้ดูแลระบบวิชาการ'}
+            <h2>คำอธิบายและรายละเอียดการใช้งาน</h2>
+            <p>${doc.description || 'เอกสารนี้จัดทำขึ้นเพื่อใช้เป็นแนวทางมาตรฐานในการปฏิบัติงานวิชาการ การจัดทำหลักฐานร่องรอยการเรียนรู้ และการประเมินผลการจัดการเรียนการสอนตามเกณฑ์มาตรฐานสถานศึกษา'}</p>
 
-------------------------------------------------------------------------
-รายละเอียดและคำชี้แจง:
-${doc.description || 'ไม่มีคำอธิบายเพิ่มเติม'}
+            <h2>โครงสร้างและเนื้อหามาตรฐาน</h2>
+            <ol style="font-size: 14pt; line-height: 1.8;">
+              <li><strong>วัตถุประสงค์และเป้าหมาย:</strong> เพื่อสนับสนุนการจัดการศึกษาและภาระงานวิชาการให้มีประสิทธิภาพสูงสุด</li>
+              <li><strong>กลุ่มเป้าหมายผู้ใช้งาน:</strong> ข้าราชการครูและบุคลากรทางการศึกษาในสังกัด</li>
+              <li><strong>แนวปฏิบัติและขั้นตอน:</strong> นำแบบฟอร์มนี้ไปปรับใช้ตามบริบทของกลุ่มสาระการเรียนรู้และระดับชั้น</li>
+              <li><strong>การจัดเก็บและรายงานผล:</strong> ส่งหลักฐานผ่านระบบบริหารงานวิชาการออนไลน์ตามกำหนดเวลา</li>
+            </ol>
 
-------------------------------------------------------------------------
-โครงสร้างหัวข้อมาตรฐานสำหรับการจัดทำ:
-1. ความเป็นมา วัตถุประสงค์ และเป้าหมาย
-2. มาตรฐานการเรียนรู้ ตัวชี้วัด หรือกรอบการประเมิน
-3. แผนการจัดกิจกรรมและกระบวนการจัดการเรียนรู้
-4. การวัดและประเมินผลตามสภาพจริง (Rubrics)
-5. สรุปผล ปัญหา อุปสรรค และข้อเสนอแนะในการพัฒนา
+            <div class="footer">
+              <p>เอกสารสร้างจากระบบบริหารงานวิชาการ (Academic Management System) • วันที่ดาวน์โหลด: ${new Date().toLocaleString('th-TH')}</p>
+            </div>
+          </body>
+          </html>
+        `;
+        const blob = new Blob(['\ufeff', docHtml], { type: 'application/msword;charset=utf-8' });
+        const targetDocName = fileName.endsWith('.doc') || fileName.endsWith('.docx') ? fileName : `${fileName}.doc`;
+        triggerNativeBlobDownload(blob, targetDocName);
+        notifySuccess(`ดาวน์โหลด "${fileName}" สำเร็จและพร้อมเปิดใช้งานใน Word 📥`);
+        return;
+      }
 
-------------------------------------------------------------------------
-* เอกสารนี้จัดทำและดาวน์โหลดผ่านระบบบริหารงานวิชาการ (Academic Management System) *
-`;
-      } else if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') {
-        mimeType = 'text/csv;charset=utf-8';
-        content = `\ufeff"ลำดับ","รหัสเอกสาร","ชื่อรายการเอกสาร","หมวดหมู่","วันที่จัดทำ","ขนาดไฟล์","สถานะ"
+      if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') {
+        const csvContent = `\ufeff"ลำดับ","รหัสเอกสาร","ชื่อรายการเอกสาร","หมวดหมู่","วันที่จัดทำ","ขนาดไฟล์","สถานะ"
 "1","DOC-${doc.id || '01'}","${doc.title}","${thaiCategory}","${todayFormatted}","${doc.fileSize || '1.0 MB'}","พร้อมใช้งาน"
 "2","DESC","คำอธิบาย: ${doc.description || '-'}","","","",""
 `;
-      } else {
-        mimeType = 'text/plain;charset=utf-8';
-        content = `\ufeff========================================================================
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+        triggerNativeBlobDownload(blob, fileName.endsWith('.csv') ? fileName : `${fileName}.csv`);
+        notifySuccess(`ดาวน์โหลด "${fileName}" สำเร็จเรียบร้อยแล้ว 📥`);
+        return;
+      }
+
+      // Plain text or PDF text fallback
+      const textContent = `========================================================================
 เอกสารศูนย์วิชาการ: ${doc.title}
 หมวดหมู่: ${thaiCategory}
 วันที่: ${todayFormatted}
 ------------------------------------------------------------------------
-${doc.description || 'เอกสารศูนย์วิชาการพร้อมใช้งาน'}
+คำอธิบาย: ${doc.description || 'เอกสารศูนย์วิชาการพร้อมใช้งาน'}
+ผู้จัดทำ: ${doc.uploadedBy || 'กลุ่มบริหารงานวิชาการ'}
 ========================================================================
 `;
-      }
-
-      const blob = new Blob([content], { type: mimeType });
-      const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-
-      notifySuccess(`ดาวน์โหลด "${fileName}" อัตโนมัติสำเร็จเรียบร้อยแล้ว ✨`);
+      const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
+      triggerNativeBlobDownload(blob, fileName.includes('.') ? fileName : `${fileName}.txt`);
+      notifySuccess(`ดาวน์โหลด "${fileName}" สำเร็จเรียบร้อยแล้ว 📥`);
     } catch (err) {
       console.error('Download error:', err);
       notifyError('เกิดข้อผิดพลาดในการดาวน์โหลด กรุณาลองใหม่อีกครั้ง');

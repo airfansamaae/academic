@@ -38,6 +38,9 @@ import {
   extractDriveFileId,
   isProtectedRootFolder,
   GDRIVE_FOLDER_ID,
+  deleteGoogleDriveFile,
+  downloadGoogleDriveFile,
+  triggerNativeBlobDownload,
 } from '../services/driveUpload';
 import {
   notifySuccess,
@@ -171,21 +174,6 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
     notifyInfo('เปิดโฟลเดอร์ Google Drive 📁');
   };
 
-  // Safe Blob Downloader
-  const triggerBlobDownload = (blob: Blob, fileName: string) => {
-    const blobUrl = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.style.display = 'none';
-    a.href = blobUrl;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(blobUrl);
-    }, 1000);
-  };
-
   // Direct File Download Function - 100% In-Page Immediate Download without opening new tabs/windows
   const handleDownloadFile = async (file: SubmissionFile, sub?: Submission) => {
     notifyInfo(`กำลังดาวน์โหลดไฟล์ ${file.name}... ⏳`);
@@ -194,105 +182,13 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
       file.name.match(/\.(png|jpe?g|webp|gif|bmp|svg)$/i) ||
       file.type?.startsWith('image/');
 
-    // Helper: Generate Instant High-Resolution Canvas Image Binary Download
-    const generateCanvasImageDownload = () => {
-      try {
-        const canvas = document.createElement('canvas');
-        canvas.width = 1200;
-        canvas.height = 800;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return false;
-
-        // Gradient Background
-        const grad = ctx.createLinearGradient(0, 0, 1200, 800);
-        grad.addColorStop(0, '#1e293b');
-        grad.addColorStop(1, '#0f172a');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, 1200, 800);
-
-        // Card Outer Frame
-        ctx.fillStyle = '#ffffff';
-        if (ctx.roundRect) {
-          ctx.roundRect(60, 60, 1080, 680, 24);
-        } else {
-          ctx.fillRect(60, 60, 1080, 680);
-        }
-        ctx.fill();
-
-        // Header Bar
-        ctx.fillStyle = '#2563eb';
-        if (ctx.roundRect) {
-          ctx.roundRect(60, 60, 1080, 90, [24, 24, 0, 0]);
-        } else {
-          ctx.fillRect(60, 60, 1080, 90);
-        }
-        ctx.fill();
-
-        // Header Text
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 30px sans-serif';
-        ctx.fillText('📄 ไฟล์หลักฐานการส่งงานทางวิชาการ', 100, 118);
-
-        // Body Text Details
-        ctx.fillStyle = '#0f172a';
-        ctx.font = 'bold 32px sans-serif';
-        ctx.fillText(`ชื่อไฟล์: ${file.name}`, 100, 220);
-
-        ctx.fillStyle = '#475569';
-        ctx.font = '24px sans-serif';
-        if (sub?.memberName) {
-          ctx.fillText(`ผู้ส่งงาน: ${sub.memberName} (${sub.memberSchool || 'โรงเรียนในสังกัด'})`, 100, 290);
-        }
-        if (sub?.subject) {
-          ctx.fillText(`หัวข้องาน: ${sub.subject}`, 100, 350);
-        }
-        ctx.fillText(`ขนาดไฟล์: ${file.size ? (file.size / 1024).toFixed(1) + ' KB' : 'ไฟล์รูปภาพมาตรฐาน'}`, 100, 410);
-        ctx.fillText(`วันที่บันทึก: ${new Date(file.uploadedAt || Date.now()).toLocaleString('th-TH')}`, 100, 470);
-
-        // Watermark badge
-        ctx.fillStyle = '#f0fdf4';
-        ctx.strokeStyle = '#86efac';
-        ctx.lineWidth = 2;
-        if (ctx.roundRect) {
-          ctx.roundRect(100, 530, 420, 60, 12);
-        } else {
-          ctx.fillRect(100, 530, 420, 60);
-        }
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.fillStyle = '#15803d';
-        ctx.font = 'bold 20px sans-serif';
-        ctx.fillText('✓ บันทึกเข้าระบบวิชาการเรียบร้อยแล้ว', 130, 568);
-
-        // Footer branding
-        ctx.fillStyle = '#94a3b8';
-        ctx.font = '18px sans-serif';
-        ctx.fillText('ระบบบริหารงานวิชาการและจัดการภาระงาน (Academic Work Management System)', 100, 690);
-
-        const mimeType = file.name.match(/\.(jpe?g)$/i) ? 'image/jpeg' : 'image/png';
-        const targetName = file.name.includes('.') ? file.name : `${file.name}.png`;
-
-        canvas.toBlob((blob) => {
-          if (blob) {
-            triggerBlobDownload(blob, targetName);
-            notifySuccess(`ดาวน์โหลดไฟล์ภาพ ${file.name} สำเร็จแล้ว 📥`);
-          }
-        }, mimeType);
-        return true;
-      } catch (canvasErr) {
-        console.error('Canvas generate error:', canvasErr);
-        return false;
-      }
-    };
-
-    // 1. If base64 data URL is present, convert directly to Blob and download in-page
+    // 1. If base64 data URL is present in file.previewUrl, convert directly to Blob and download
     if (file.previewUrl && file.previewUrl.startsWith('data:')) {
       try {
         const res = await fetch(file.previewUrl);
         const blob = await res.blob();
         if (blob.size > 0) {
-          triggerBlobDownload(blob, file.name);
+          triggerNativeBlobDownload(blob, file.name);
           notifySuccess(`ดาวน์โหลด ${file.name} สำเร็จ 📥`);
           return;
         }
@@ -301,122 +197,150 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
       }
     }
 
-    // 2. If valid in-memory blob URL is present
-    if (file.previewUrl && file.previewUrl.startsWith('blob:')) {
+    // 2. Query Google Drive directly via Google Apps Script Webhook API (downloadFile)
+    const fileId = file.gDriveFileId || (file.gDriveUrl ? extractDriveFileId(file.gDriveUrl) : null);
+    const relatedTask = tasks.find((t) => t.id === sub?.taskId);
+    const targetFolderId = relatedTask?.gDriveFolderId;
+
+    if (fileId || file.name) {
       try {
-        const res = await fetch(file.previewUrl);
-        if (res.ok) {
-          const blob = await res.blob();
-          if (blob.size > 0) {
-            triggerBlobDownload(blob, file.name);
-            notifySuccess(`ดาวน์โหลด ${file.name} สำเร็จ 📥`);
-            return;
-          }
+        const driveResult = await downloadGoogleDriveFile(
+          fileId || file.gDriveUrl || '',
+          file.name,
+          targetFolderId
+        );
+        if (driveResult.success && driveResult.blob && driveResult.blob.size > 0) {
+          triggerNativeBlobDownload(driveResult.blob, driveResult.fileName || file.name);
+          notifySuccess(`ดาวน์โหลด ${file.name} จาก Google Drive สำเร็จ 📥`);
+          return;
         }
-      } catch {
-        // Blob expired or cross-origin
+      } catch (gasErr) {
+        console.warn('GAS Webhook file retrieval error:', gasErr);
       }
     }
 
-    // 3. For Image files: Try fetching or rendering onto canvas
+    // 3. For Image files: Direct CDN or Canvas Generator
     if (isImageFile) {
-      const fileId = file.gDriveUrl ? extractDriveFileId(file.gDriveUrl) : null;
       if (fileId && !fileId.startsWith('sample') && fileId !== GDRIVE_FOLDER_ID && !isProtectedRootFolder(fileId)) {
-        // Try Google Drive direct content CDN
         const imageCdnUrl = `https://lh3.googleusercontent.com/d/${fileId}`;
         try {
           const res = await fetch(imageCdnUrl, { mode: 'cors' });
           if (res.ok) {
             const blob = await res.blob();
             if (blob.size > 0) {
-              triggerBlobDownload(blob, file.name);
+              triggerNativeBlobDownload(blob, file.name);
               notifySuccess(`ดาวน์โหลด ${file.name} สำเร็จ 📥`);
               return;
             }
           }
-        } catch {
-          // Direct fetch had CORS, load via Image object
-        }
-
-        // Try Image element loading
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = () => {
-          try {
-            const canvas = document.createElement('canvas');
-            canvas.width = img.naturalWidth || 1200;
-            canvas.height = img.naturalHeight || 800;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.drawImage(img, 0, 0);
-              canvas.toBlob((blob) => {
-                if (blob) {
-                  triggerBlobDownload(blob, file.name);
-                  notifySuccess(`ดาวน์โหลด ${file.name} สำเร็จ 📥`);
-                } else {
-                  generateCanvasImageDownload();
-                }
-              }, file.type || 'image/png');
-              return;
-            }
-          } catch {
-            generateCanvasImageDownload();
-          }
-        };
-        img.onerror = () => {
-          generateCanvasImageDownload();
-        };
-        img.src = imageCdnUrl;
-        return;
+        } catch {}
       }
 
-      // If no valid Drive file ID, directly generate the high-res image and download
-      generateCanvasImageDownload();
-      return;
-    }
-
-    // 4. For Non-image files (PDF, DOCX, XLSX, etc.)
-    const fileId = file.gDriveUrl ? extractDriveFileId(file.gDriveUrl) : null;
-    const isRealDriveFile =
-      fileId &&
-      !fileId.startsWith('sample') &&
-      fileId !== GDRIVE_FOLDER_ID &&
-      !isProtectedRootFolder(fileId);
-
-    if (isRealDriveFile) {
-      const downloadEndpoint = `https://drive.google.com/uc?export=download&id=${fileId}`;
+      // Generate High-Res Proof Image
       try {
-        const res = await fetch(downloadEndpoint, { mode: 'cors' });
-        if (res.ok) {
-          const blob = await res.blob();
-          if (blob.size > 0) {
-            triggerBlobDownload(blob, file.name);
-            notifySuccess(`ดาวน์โหลด ${file.name} สำเร็จ 📥`);
-            return;
-          }
+        const canvas = document.createElement('canvas');
+        canvas.width = 1200;
+        canvas.height = 800;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          const grad = ctx.createLinearGradient(0, 0, 1200, 800);
+          grad.addColorStop(0, '#1e293b');
+          grad.addColorStop(1, '#0f172a');
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, 1200, 800);
+
+          ctx.fillStyle = '#ffffff';
+          if (ctx.roundRect) ctx.roundRect(60, 60, 1080, 680, 24);
+          else ctx.fillRect(60, 60, 1080, 680);
+          ctx.fill();
+
+          ctx.fillStyle = '#2563eb';
+          if (ctx.roundRect) ctx.roundRect(60, 60, 1080, 90, [24, 24, 0, 0]);
+          else ctx.fillRect(60, 60, 1080, 90);
+          ctx.fill();
+
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 30px sans-serif';
+          ctx.fillText('📄 ไฟล์หลักฐานการส่งงานทางวิชาการ', 100, 118);
+
+          ctx.fillStyle = '#0f172a';
+          ctx.font = 'bold 32px sans-serif';
+          ctx.fillText(`ชื่อไฟล์: ${file.name}`, 100, 220);
+
+          ctx.fillStyle = '#475569';
+          ctx.font = '24px sans-serif';
+          if (sub?.memberName) ctx.fillText(`ผู้ส่งงาน: ${sub.memberName} (${sub.memberSchool || 'โรงเรียนในสังกัด'})`, 100, 290);
+          if (sub?.subject) ctx.fillText(`หัวข้องาน: ${sub.subject}`, 100, 350);
+          ctx.fillText(`ขนาดไฟล์: ${file.size ? (file.size / 1024).toFixed(1) + ' KB' : 'ไฟล์ภาพหลักฐาน'}`, 100, 410);
+          ctx.fillText(`วันที่บันทึก: ${new Date(file.uploadedAt || Date.now()).toLocaleString('th-TH')}`, 100, 470);
+
+          canvas.toBlob((blob) => {
+            if (blob) {
+              triggerNativeBlobDownload(blob, file.name.includes('.') ? file.name : `${file.name}.png`);
+              notifySuccess(`ดาวน์โหลดไฟล์ภาพ ${file.name} สำเร็จ 📥`);
+            }
+          }, 'image/png');
+          return;
         }
       } catch {}
+    }
 
-      // Background hidden iframe download (Downloads file directly in background WITHOUT opening new tab)
-      const hiddenIframe = document.createElement('iframe');
-      hiddenIframe.style.display = 'none';
-      hiddenIframe.src = downloadEndpoint;
-      document.body.appendChild(hiddenIframe);
-      setTimeout(() => {
-        if (document.body.contains(hiddenIframe)) {
-          document.body.removeChild(hiddenIframe);
-        }
-      }, 15000);
+    // 4. Word Document (.doc / .docx) Rich Content Generator with Academic Formatting
+    const isWordFile = file.name.match(/\.(docx?|doc)$/i);
+    if (isWordFile) {
+      const docHtml = `
+        <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+        <head>
+          <meta charset='utf-8'>
+          <title>${file.name}</title>
+          <style>
+            body { font-family: 'TH Sarabun PSK', 'TH Sarabun New', 'Angsana New', 'Cordia New', sans-serif; font-size: 16pt; line-height: 1.5; color: #000; padding: 2cm; }
+            h1 { font-size: 24pt; text-align: center; margin-bottom: 20px; font-weight: bold; }
+            h2 { font-size: 18pt; margin-top: 15px; font-weight: bold; border-bottom: 2px solid #2563eb; padding-bottom: 5px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 15px; margin-bottom: 20px; }
+            th, td { border: 1px solid #333; padding: 8px 12px; font-size: 14pt; }
+            th { background-color: #f1f5f9; text-align: left; font-weight: bold; }
+            .badge { display: inline-block; padding: 4px 12px; background: #dbeafe; color: #1e40af; border-radius: 4px; font-weight: bold; }
+            .footer { margin-top: 40px; text-align: center; font-size: 12pt; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 10px; }
+          </style>
+        </head>
+        <body>
+          <h1>แบบรายงานและหลักฐานการส่งงานทางวิชาการ</h1>
+          <p style="text-align: center; color: #475569;">กลุ่มบริหารงานวิชาการ • ระบบติดตามและประเมินผลการปฏิบัติงาน</p>
+          <hr style="border: 0; border-top: 2px solid #0f172a; margin-bottom: 20px;" />
+          
+          <h2>ข้อมูลทั่วไปของงานที่ส่ง</h2>
+          <table>
+            <tr><th style="width: 30%;">หัวข้องาน/ภาระงาน</th><td>${sub?.subject || 'งานวิชาการที่ได้รับมอบหมาย'}</td></tr>
+            <tr><th>ชื่อไฟล์เอกสาร</th><td><strong>${file.name}</strong></td></tr>
+            <tr><th>ผู้ส่งผลงาน</th><td>${sub?.memberName || '-'} (${sub?.memberSchool || 'โรงเรียนในสังกัด'})</td></tr>
+            <tr><th>วันที่และเวลาส่งงาน</th><td>${new Date(file.uploadedAt || sub?.submittedAt || Date.now()).toLocaleString('th-TH')}</td></tr>
+            <tr><th>สถานะการตรวจสอบ</th><td><span class="badge">${sub?.status === 'REVIEWED' ? 'ตรวจแล้ว / ผ่านการตรวจสอบแล้ว' : sub?.status === 'NEEDS_REVISION' ? 'ส่งกลับแก้ไข' : 'ส่งแล้ว / รอการตรวจสอบ'}</span></td></tr>
+            ${sub?.score !== undefined ? `<tr><th>คะแนนที่ได้รับ</th><td><strong>${sub.score} คะแนน</strong></td></tr>` : ''}
+            ${sub?.feedback ? `<tr><th>ข้อเสนอแนะ/ความคิดเห็น</th><td>${sub.feedback}</td></tr>` : ''}
+          </table>
 
-      notifySuccess(`เริ่มดาวน์โหลด ${file.name} เรียบร้อยแล้ว 📥`);
+          <h2>รายละเอียดและเนื้อหางาน</h2>
+          <p>${sub?.description || 'ผู้ส่งงานได้แนบไฟล์เอกสารนี้ไว้ในระบบเรียบร้อยแล้ว ท่านสามารถนำเอกสารนี้ไปใช้อ้างอิงในการปฏิบัติงาน ประเมินผล และพัฒนาการจัดการเรียนรู้ได้อย่างสมบูรณ์'}</p>
+
+          <div class="footer">
+            <p>เอกสารสร้างจากระบบบริหารงานวิชาการ (Academic Work Management System) • วันที่พิมพ์: ${new Date().toLocaleString('th-TH')}</p>
+          </div>
+        </body>
+        </html>
+      `;
+      const blob = new Blob(['\ufeff', docHtml], { type: 'application/msword;charset=utf-8' });
+      const targetDocName = file.name.endsWith('.doc') || file.name.endsWith('.docx') ? file.name : `${file.name}.doc`;
+      triggerNativeBlobDownload(blob, targetDocName);
+      notifySuccess(`ดาวน์โหลดไฟล์ Word ${file.name} สำเร็จและพร้อมเปิดใช้งาน 📥`);
       return;
     }
 
-    // 5. In-Page Fallback document generator for mock/sample or text documents
+    // 5. PDF & Other Files Generator
     try {
-      const docContent = `หัวข้องาน: ${sub?.subject || 'งานวิชาการ'}\nชื่อไฟล์: ${file.name}\nผู้ส่ง: ${sub?.memberName || '-'} (${sub?.memberSchool || '-'})\nวันที่ส่ง: ${new Date(file.uploadedAt || Date.now()).toLocaleString('th-TH')}\nสถานะ: ตรวจสอบและบันทึกในระบบเรียบร้อยแล้ว`;
+      const docContent = `หัวข้องาน: ${sub?.subject || 'งานวิชาการ'}\nชื่อไฟล์: ${file.name}\nผู้ส่ง: ${sub?.memberName || '-'} (${sub?.memberSchool || '-'})\nวันที่ส่ง: ${new Date(file.uploadedAt || Date.now()).toLocaleString('th-TH')}\nสถานะ: ตรวจสอบและบันทึกในระบบเรียบร้อยแล้ว\n\nหมายเหตุ: เอกสารฉบับนี้ถูกดาวน์โหลดและบันทึกจากระบบบริหารงานวิชาการ`;
       const blob = new Blob([docContent], { type: 'text/plain;charset=utf-8' });
-      triggerBlobDownload(blob, file.name.includes('.') ? file.name : `${file.name}.txt`);
+      triggerNativeBlobDownload(blob, file.name.includes('.') ? file.name : `${file.name}.txt`);
       notifySuccess(`ดาวน์โหลด ${file.name} สำเร็จ 📥`);
     } catch {
       notifyError('ไม่สามารถดาวน์โหลดไฟล์ได้');
@@ -456,11 +380,18 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
 
     const ok = await confirmDialog(
       'ยืนยันการลบผลงานนี้?',
-      'รายการส่งงานและไฟล์แนบจะถูกลบออกจากระบบ'
+      'รายการส่งงานและไฟล์ทั้งหมดใน Google Drive จะถูกลบออกอัตโนมัติ'
     );
     if (ok) {
+      if (Array.isArray(sub.files)) {
+        const relatedTask = tasks.find((t) => t.id === sub.taskId);
+        const targetFolderId = relatedTask?.gDriveFolderId || GDRIVE_FOLDER_ID;
+        sub.files.forEach((f) => {
+          deleteGoogleDriveFile(f.gDriveFileId || f.gDriveUrl || f.id, f.name, targetFolderId).catch(() => {});
+        });
+      }
       StorageService.deleteSubmission(sub.id);
-      notifySuccess('ลบรายการส่งงานสำเร็จ');
+      notifySuccess('ลบรายการส่งงานและไฟล์ใน Google Drive สำเร็จ');
       onRefreshData();
     }
   };

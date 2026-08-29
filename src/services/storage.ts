@@ -808,16 +808,11 @@ export class StorageService {
     CloudflareApiService.deleteTask(taskId).catch(() => {});
     deletedSubs.forEach((s) => CloudflareApiService.deleteSubmission(s.id).catch(() => {}));
 
-    // 6. Automatic Google Drive Deletion: ONLY delete dedicated subfolders (Never delete root folder)
-    if (taskToDelete?.gDriveFolderId && !isProtectedRootFolder(taskToDelete.gDriveFolderId)) {
-      deleteGoogleDriveFolder(taskToDelete.gDriveFolderId).catch(() => {});
-    }
+    // 6. Automatic Google Drive File Deletion: ONLY delete submission files (NEVER delete folders)
     deletedSubs.forEach((sub) => {
       if (Array.isArray(sub.files)) {
         sub.files.forEach((f) => {
-          if (f.gDriveUrl) {
-            deleteGoogleDriveFile(f.gDriveUrl).catch(() => {});
-          }
+          deleteGoogleDriveFile(f.gDriveFileId || f.gDriveUrl || f.id, f.name, taskToDelete?.gDriveFolderId).catch(() => {});
         });
       }
     });
@@ -843,16 +838,12 @@ export class StorageService {
     currentTasks.forEach((t) => CloudflareApiService.deleteTask(t.id).catch(() => {}));
     allSubs.forEach((s) => CloudflareApiService.deleteSubmission(s.id).catch(() => {}));
 
-    // 5. Automatic Google Drive Deletion for all tasks & files (Protect root folders)
-    currentTasks.forEach((t) => {
-      if (t.gDriveFolderId && !isProtectedRootFolder(t.gDriveFolderId)) {
-        deleteGoogleDriveFolder(t.gDriveFolderId).catch(() => {});
-      }
-    });
+    // 5. Automatic Google Drive File Deletion for submission files (Strictly preserve all folders)
     allSubs.forEach((sub) => {
       if (Array.isArray(sub.files)) {
+        const relatedTask = currentTasks.find((t) => t.id === sub.taskId);
         sub.files.forEach((f) => {
-          if (f.gDriveUrl) deleteGoogleDriveFile(f.gDriveUrl).catch(() => {});
+          deleteGoogleDriveFile(f.gDriveFileId || f.gDriveUrl || f.id, f.name, relatedTask?.gDriveFolderId).catch(() => {});
         });
       }
     });
@@ -1012,15 +1003,19 @@ export class StorageService {
   static updateSubmission(submission: Submission): void {
     const list = this.getSubmissions();
     const existingSub = list.find((s) => s.id === submission.id);
+    const tasks = this.getTasks();
+    const relatedTask = tasks.find((t) => t.id === submission.taskId);
+    const targetFolderId = relatedTask?.gDriveFolderId;
     
     // Automatic Google Drive Deletion for any files removed during editing
     if (existingSub && Array.isArray(existingSub.files)) {
-      const remainingUrls = new Set(
-        (submission.files || []).map((f) => f.gDriveUrl).filter(Boolean)
+      const remainingIdentifiers = new Set(
+        (submission.files || []).map((f) => f.gDriveFileId || f.gDriveUrl || f.name).filter(Boolean)
       );
       existingSub.files.forEach((f) => {
-        if (f.gDriveUrl && !remainingUrls.has(f.gDriveUrl)) {
-          deleteGoogleDriveFile(f.gDriveUrl).catch(() => {});
+        const fileKey = f.gDriveFileId || f.gDriveUrl || f.name;
+        if (fileKey && !remainingIdentifiers.has(fileKey)) {
+          deleteGoogleDriveFile(f.gDriveFileId || f.gDriveUrl || f.id, f.name, targetFolderId).catch(() => {});
         }
       });
     }
@@ -1038,6 +1033,9 @@ export class StorageService {
   static deleteSubmission(submissionId: string): void {
     const list = this.getSubmissions();
     const subToDelete = list.find((s) => s.id === submissionId);
+    const tasks = this.getTasks();
+    const relatedTask = subToDelete ? tasks.find((t) => t.id === subToDelete.taskId) : null;
+    const targetFolderId = relatedTask?.gDriveFolderId;
 
     this.addDeletedSubId(submissionId);
     const updatedList = list.filter((s) => s.id !== submissionId);
@@ -1047,7 +1045,7 @@ export class StorageService {
     // Automatic Google Drive Deletion for submission files
     if (subToDelete && Array.isArray(subToDelete.files)) {
       subToDelete.files.forEach((f) => {
-        if (f.gDriveUrl) deleteGoogleDriveFile(f.gDriveUrl).catch(() => {});
+        deleteGoogleDriveFile(f.gDriveFileId || f.gDriveUrl || f.id, f.name, targetFolderId).catch(() => {});
       });
     }
 
