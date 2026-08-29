@@ -584,7 +584,7 @@ export async function uploadFileToGoogleDrive(
   }).catch(() => {});
 
   return new Promise((resolve) => {
-    // 10s maximum timeout for Google Apps Script to maintain snappy responsive UI
+    // 45s maximum timeout for Google Apps Script to upload and decode base64 file
     let hasResolved = false;
     const controller = new AbortController();
 
@@ -607,7 +607,7 @@ export async function uploadFileToGoogleDrive(
         fileType,
         targetFolderId: resolvedFolderId,
       });
-    }, 10000);
+    }, 45000);
 
     const reader = new FileReader();
 
