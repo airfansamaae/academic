@@ -148,8 +148,12 @@ export class CloudflareApiService {
           fileType: doc.fileType,
           fileSize: doc.fileSize,
           fileUrl: doc.fileUrl,
+          gDriveFolderId: doc.gDriveFolderId,
+          gDriveFileId: doc.gDriveFileId,
+          fileData: doc.fileData,
           uploadedBy: doc.uploadedBy,
           createdAt: doc.createdAt,
+          updatedAt: doc.updatedAt,
         }),
       }, 3500);
       return response.ok;

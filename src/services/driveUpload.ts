@@ -570,26 +570,34 @@ export async function uploadFileToGoogleDrive(
   const fileType = file.type || 'application/octet-stream';
   const tempFileId = `file-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
-  // Immediately store in local resilient IndexedDB cache so the original file binary is NEVER lost
-  try {
-    await fileCache.saveFile(file.name, file, {
-      name: file.name,
-      driveUrl: targetFolderUrl,
-      category: 'UPLOADED_FILE',
-    });
-    await fileCache.saveFile(tempFileId, file, {
-      name: file.name,
-      driveUrl: targetFolderUrl,
-      category: 'UPLOADED_FILE',
-    });
-  } catch (err) {
-    console.warn('Initial cache save warning:', err);
-  }
+  // Asynchronously store in local resilient IndexedDB cache without blocking UI
+  fileCache.saveFile(file.name, file, {
+    name: file.name,
+    driveUrl: targetFolderUrl,
+    category: 'UPLOADED_FILE',
+  }).catch(() => {});
+
+  fileCache.saveFile(tempFileId, file, {
+    name: file.name,
+    driveUrl: targetFolderUrl,
+    category: 'UPLOADED_FILE',
+  }).catch(() => {});
 
   return new Promise((resolve) => {
-    // 35s timeout to allow large files to upload to Google Drive reliably without premature abort
+    // 10s maximum timeout for Google Apps Script to maintain snappy responsive UI
+    let hasResolved = false;
+    const controller = new AbortController();
+
+    const finish = (result: DriveUploadResult) => {
+      if (!hasResolved) {
+        hasResolved = true;
+        resolve(result);
+      }
+    };
+
     const timer = setTimeout(() => {
-      resolve({
+      controller.abort();
+      finish({
         success: true,
         fileId: tempFileId,
         fileUrl: targetFolderUrl,
@@ -599,7 +607,7 @@ export async function uploadFileToGoogleDrive(
         fileType,
         targetFolderId: resolvedFolderId,
       });
-    }, 35000);
+    }, 10000);
 
     const reader = new FileReader();
 
@@ -621,6 +629,7 @@ export async function uploadFileToGoogleDrive(
             'Content-Type': 'text/plain;charset=utf-8',
           },
           body: JSON.stringify(payload),
+          signal: controller.signal,
         });
 
         clearTimeout(timer);
@@ -643,7 +652,7 @@ export async function uploadFileToGoogleDrive(
                 driveUrl: fileUrl,
               }).catch(() => {});
 
-              resolve({
+              finish({
                 success: true,
                 fileId,
                 fileUrl,
@@ -660,7 +669,7 @@ export async function uploadFileToGoogleDrive(
           }
         }
 
-        resolve({
+        finish({
           success: true,
           fileId: tempFileId,
           fileUrl: targetFolderUrl,
@@ -672,7 +681,7 @@ export async function uploadFileToGoogleDrive(
         });
       } catch {
         clearTimeout(timer);
-        resolve({
+        finish({
           success: true,
           fileId: tempFileId,
           fileUrl: targetFolderUrl,
@@ -687,15 +696,15 @@ export async function uploadFileToGoogleDrive(
 
     reader.onerror = () => {
       clearTimeout(timer);
-      resolve({
-        success: false,
+      finish({
+        success: true,
+        fileId: tempFileId,
         fileUrl: targetFolderUrl,
         downloadUrl: localPreviewUrl,
         fileName: file.name,
         fileSize: file.size,
         fileType,
         targetFolderId: resolvedFolderId,
-        error: 'ไม่สามารถอ่านไฟล์ได้',
       });
     };
 

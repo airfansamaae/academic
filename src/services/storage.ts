@@ -1628,25 +1628,41 @@ export class StorageService {
         hasChanges = true;
       }
 
-      // 5. Sync Documents (Honor deletion tombstones)
+      // 5. Sync Documents (Honor deletion tombstones & Real-time update detection)
       if (data.documents && Array.isArray(data.documents)) {
         const deletedDocIds = this.getDeletedDocIds();
         const currentDocs = this.getDocuments();
 
+        // Detect remote tombstones
+        data.documents.forEach((d: any) => {
+          if (d && d.id && (d.status === 'DELETED' || d._deleted === true || d.category === 'DELETED' || d.title === '[DELETED]')) {
+            this.addDeletedDocId(d.id);
+          }
+        });
+
         const nonDeletedCloudDocs = data.documents.filter(
-          (d: any) => !deletedDocIds.has(d.id) && d.status !== 'DELETED' && d._deleted !== true
+          (d: any) =>
+            d &&
+            d.id &&
+            !deletedDocIds.has(d.id) &&
+            d.status !== 'DELETED' &&
+            d.category !== 'DELETED' &&
+            d.title !== '[DELETED]' &&
+            d._deleted !== true
         );
 
         const mappedDocs: DocumentItem[] = nonDeletedCloudDocs.map((d: any) => ({
           id: d.id,
-          title: d.title,
+          title: d.title || 'เอกสารวิชาการ',
           category: d.category || 'SAMPLE_DOC',
           description: d.description || '',
-          fileName: d.fileName || `${d.title}.docx`,
+          fileName: d.fileName || `${d.title || 'document'}.docx`,
           fileType: d.fileType || 'docx',
           fileSize: d.fileSize || '1.0 MB',
           fileUrl: d.fileUrl || '',
           gDriveFolderId: d.gDriveFolderId || GDRIVE_FOLDER_ID,
+          gDriveFileId: d.gDriveFileId || undefined,
+          fileData: d.fileData || undefined,
           uploadedBy: d.uploadedBy || 'ผู้ดูแลระบบวิชาการ',
           createdAt: d.createdAt || getNowISO(),
           updatedAt: d.updatedAt || d.createdAt || getNowISO(),
@@ -1654,14 +1670,53 @@ export class StorageService {
 
         const mergedDocsMap = new Map<string, DocumentItem>();
         mappedDocs.forEach((d) => mergedDocsMap.set(d.id, d));
+
+        // 2-Way Merge: Keep local docs that are not deleted and push new local ones
+        const remoteDocIdSet = new Set(mappedDocs.map((d) => d.id));
         currentDocs.forEach((d) => {
-          if (!deletedDocIds.has(d.id) && !mergedDocsMap.has(d.id)) {
-            mergedDocsMap.set(d.id, d);
+          if (!deletedDocIds.has(d.id)) {
+            const remote = mergedDocsMap.get(d.id);
+            if (!remote) {
+              mergedDocsMap.set(d.id, d);
+              if (!remoteDocIdSet.has(d.id)) {
+                CloudflareApiService.syncDocument(d).catch(() => {});
+              }
+            } else {
+              const remoteTime = new Date(remote.updatedAt || remote.createdAt || 0).getTime();
+              const localTime = new Date(d.updatedAt || d.createdAt || 0).getTime();
+              if (localTime > remoteTime) {
+                mergedDocsMap.set(d.id, d);
+                CloudflareApiService.syncDocument(d).catch(() => {});
+              } else if (d.fileData && !remote.fileData) {
+                // Preserve local base64 binary if remote didn't store it
+                mergedDocsMap.set(d.id, { ...remote, fileData: d.fileData });
+              }
+            }
           }
         });
 
-        const finalDocs = Array.from(mergedDocsMap.values()).filter((d) => !deletedDocIds.has(d.id));
-        localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(finalDocs));
+        const freshDeletedDocIds = this.getDeletedDocIds();
+        const finalDocs = Array.from(mergedDocsMap.values()).filter((d) => !freshDeletedDocIds.has(d.id));
+
+        if (finalDocs.length !== currentDocs.length) {
+          localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(finalDocs));
+          hasChanges = true;
+        } else {
+          // Check if any document content changed
+          const currentDocMap = new Map(currentDocs.map((d) => [d.id, d]));
+          let contentChanged = false;
+          for (const d of finalDocs) {
+            const old = currentDocMap.get(d.id);
+            if (!old || old.updatedAt !== d.updatedAt || old.title !== d.title || old.fileUrl !== d.fileUrl || old.gDriveFileId !== d.gDriveFileId) {
+              contentChanged = true;
+              break;
+            }
+          }
+          if (contentChanged) {
+            localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(finalDocs));
+            hasChanges = true;
+          }
+        }
       }
 
       // 6. Sync Settings
