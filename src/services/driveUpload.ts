@@ -1,3 +1,5 @@
+import { fileCache } from './fileCache';
+
 /**
  * Fast and resilient Google Drive upload & management service for academic assignments and submissions
  */
@@ -107,27 +109,68 @@ function doPost(e) {
       var dlFolderId = data.folderId || data.targetFolderId;
 
       if (!dlFileId && data.fileUrl) {
-        var match = data.fileUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) ||
+        var match = data.fileUrl.match(/\\/file\\/d\\/([a-zA-Z0-9_-]+)/) ||
                     data.fileUrl.match(/id=([a-zA-Z0-9_-]+)/);
         if (match) dlFileId = match[1];
       }
 
       var targetFile = null;
-      if (dlFileId && dlFileId.length >= 20) {
+      if (dlFileId && dlFileId.length >= 20 && PROTECTED_ROOT_IDS.indexOf(dlFileId) === -1) {
         try {
           targetFile = DriveApp.getFileById(dlFileId);
         } catch (errId) {}
       }
 
+      // ค้นหาไฟล์จากชื่อไฟล์ทั่วทั้ง Google Drive
       if (!targetFile && dlFileName) {
         try {
-          var sFolder = dlFolderId ? DriveApp.getFolderById(dlFolderId) : DriveApp.getRootFolder();
-          var filesIterator = sFolder.getFilesByName(dlFileName);
+          var filesIterator = DriveApp.getFilesByName(dlFileName);
           if (filesIterator.hasNext()) {
             targetFile = filesIterator.next();
           }
-        } catch (errName) {}
+        } catch (errNameAll) {}
       }
+
+      // ค้นหาในโฟลเดอร์เป้าหมาย
+      if (!targetFile && dlFileName && dlFolderId) {
+        try {
+          var sFolder = DriveApp.getFolderById(dlFolderId);
+          var sIterator = sFolder.getFilesByName(dlFileName);
+          if (sIterator.hasNext()) {
+            targetFile = sIterator.next();
+          }
+        } catch (errNameFolder) {}
+      }
+
+      if (targetFile) {
+        try {
+          var blob = targetFile.getBlob();
+          var base64Data = Utilities.base64Encode(blob.getBytes());
+          var mimeType = blob.getContentType() || targetFile.getMimeType() || 'application/octet-stream';
+          
+          return ContentService.createTextOutput(JSON.stringify({
+            status: 'success',
+            action: 'downloadFile',
+            fileId: targetFile.getId(),
+            fileName: targetFile.getName(),
+            mimeType: mimeType,
+            size: targetFile.getSize(),
+            data: base64Data,
+            downloadUrl: targetFile.getDownloadUrl() || ('https://drive.google.com/uc?export=download&id=' + targetFile.getId())
+          })).setMimeType(ContentService.MimeType.JSON);
+        } catch (errBlob) {
+          return ContentService.createTextOutput(JSON.stringify({
+            status: 'error',
+            message: 'Failed to read file binary: ' + errBlob.toString()
+          })).setMimeType(ContentService.MimeType.JSON);
+        }
+      }
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'error',
+        message: 'File not found in Google Drive'
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
 
       if (targetFile) {
         try {
@@ -525,12 +568,30 @@ export async function uploadFileToGoogleDrive(
   const targetFolderUrl = `https://drive.google.com/drive/folders/${resolvedFolderId}`;
   const localPreviewUrl = URL.createObjectURL(file);
   const fileType = file.type || 'application/octet-stream';
+  const tempFileId = `file-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+  // Immediately store in local resilient IndexedDB cache so the original file binary is NEVER lost
+  try {
+    await fileCache.saveFile(file.name, file, {
+      name: file.name,
+      driveUrl: targetFolderUrl,
+      category: 'UPLOADED_FILE',
+    });
+    await fileCache.saveFile(tempFileId, file, {
+      name: file.name,
+      driveUrl: targetFolderUrl,
+      category: 'UPLOADED_FILE',
+    });
+  } catch (err) {
+    console.warn('Initial cache save warning:', err);
+  }
 
   return new Promise((resolve) => {
-    // 5s timeout fallback resolution to keep UI responsive
+    // 35s timeout to allow large files to upload to Google Drive reliably without premature abort
     const timer = setTimeout(() => {
       resolve({
         success: true,
+        fileId: tempFileId,
         fileUrl: targetFolderUrl,
         downloadUrl: localPreviewUrl,
         fileName: file.name,
@@ -538,7 +599,7 @@ export async function uploadFileToGoogleDrive(
         fileType,
         targetFolderId: resolvedFolderId,
       });
-    }, 5000);
+    }, 35000);
 
     const reader = new FileReader();
 
@@ -567,13 +628,20 @@ export async function uploadFileToGoogleDrive(
         if (response.ok) {
           try {
             const data = await response.json();
-            if (data.status === 'success' || data.fileUrl || data.fileId) {
-              const fileId = data.fileId || `drive_${Date.now()}`;
+            if (data && (data.status === 'success' || data.fileUrl || data.fileId)) {
+              const fileId = data.fileId || tempFileId;
               const fileUrl =
                 data.fileUrl ||
                 (data.fileId
                   ? `https://drive.google.com/file/d/${data.fileId}/view?usp=sharing`
                   : targetFolderUrl);
+
+              // Cache file with the confirmed Google Drive fileId
+              fileCache.saveFile(fileId, file, {
+                name: file.name,
+                driveFileId: fileId,
+                driveUrl: fileUrl,
+              }).catch(() => {});
 
               resolve({
                 success: true,
@@ -594,6 +662,7 @@ export async function uploadFileToGoogleDrive(
 
         resolve({
           success: true,
+          fileId: tempFileId,
           fileUrl: targetFolderUrl,
           downloadUrl: base64Data || localPreviewUrl,
           fileName: file.name,
@@ -605,6 +674,7 @@ export async function uploadFileToGoogleDrive(
         clearTimeout(timer);
         resolve({
           success: true,
+          fileId: tempFileId,
           fileUrl: targetFolderUrl,
           downloadUrl: base64Data || localPreviewUrl,
           fileName: file.name,
@@ -723,7 +793,7 @@ export function base64ToBlob(base64Data: string, mimeType: string = 'application
 }
 
 /**
- * Downloads a file directly from Google Drive via GAS Webhook API
+ * Downloads a file directly from Google Drive via GAS Webhook API or local cache
  * Returns real full binary data (Word .docx, PDF, Excel, Images, etc.)
  */
 export async function downloadGoogleDriveFile(
@@ -735,10 +805,50 @@ export async function downloadGoogleDriveFile(
   const activeWebhook = webhookUrl || getActiveGasWebhookUrl();
   const fileId = extractDriveFileId(fileIdOrUrl);
 
+  // 1. Check local resilient IndexedDB cache for original binary
+  try {
+    if (fileId) {
+      const cached = await fileCache.getFile(fileId);
+      if (cached && cached.blob && cached.blob.size > 0) {
+        return {
+          success: true,
+          blob: cached.blob,
+          fileName: cached.name || fileName || 'document',
+          mimeType: cached.type || 'application/octet-stream',
+        };
+      }
+    }
+    if (fileName) {
+      const cachedByName = await fileCache.getFile(fileName);
+      if (cachedByName && cachedByName.blob && cachedByName.blob.size > 0) {
+        return {
+          success: true,
+          blob: cachedByName.blob,
+          fileName: cachedByName.name || fileName,
+          mimeType: cachedByName.type || 'application/octet-stream',
+        };
+      }
+    }
+    if (fileIdOrUrl && fileIdOrUrl !== fileId) {
+      const cachedByUrl = await fileCache.getFile(fileIdOrUrl);
+      if (cachedByUrl && cachedByUrl.blob && cachedByUrl.blob.size > 0) {
+        return {
+          success: true,
+          blob: cachedByUrl.blob,
+          fileName: cachedByUrl.name || fileName || 'document',
+          mimeType: cachedByUrl.type || 'application/octet-stream',
+        };
+      }
+    }
+  } catch (cacheErr) {
+    console.warn('Cache lookup warning:', cacheErr);
+  }
+
+  // 2. Fetch directly from Google Apps Script Webhook API (downloadFile POST)
   try {
     const payload: Record<string, any> = {
       action: 'downloadFile',
-      fileId: fileId || undefined,
+      fileId: fileId && !isProtectedRootFolder(fileId) ? fileId : undefined,
       fileUrl: fileIdOrUrl,
       fileName: fileName || undefined,
       name: fileName || undefined,
@@ -747,7 +857,7 @@ export async function downloadGoogleDriveFile(
     };
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
 
     const res = await fetch(activeWebhook, {
       method: 'POST',
@@ -765,6 +875,11 @@ export async function downloadGoogleDriveFile(
         const mimeType = result.mimeType || 'application/octet-stream';
         const finalName = result.fileName || fileName || 'document';
         const blob = base64ToBlob(result.data, mimeType);
+
+        // Cache the newly fetched binary in IndexedDB
+        if (fileId) fileCache.saveFile(fileId, blob, { name: finalName, driveFileId: fileId }).catch(() => {});
+        if (finalName) fileCache.saveFile(finalName, blob, { name: finalName, driveFileId: fileId }).catch(() => {});
+
         return {
           success: true,
           blob,
@@ -777,7 +892,33 @@ export async function downloadGoogleDriveFile(
     console.warn('GAS Webhook direct binary download fallback:', err);
   }
 
-  // Fallback 1: If file has valid Drive ID, try direct Google Drive content endpoint
+  // 3. Fallback: Fetch via Google Apps Script GET request (?action=downloadFile)
+  if (fileId && !isProtectedRootFolder(fileId)) {
+    try {
+      const getUrl = `${activeWebhook}${activeWebhook.includes('?') ? '&' : '?'}action=downloadFile&fileId=${encodeURIComponent(fileId)}&fileName=${encodeURIComponent(fileName || '')}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      const res = await fetch(getUrl, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const result = await res.json().catch(() => null);
+        if (result && result.status === 'success' && result.data) {
+          const mimeType = result.mimeType || 'application/octet-stream';
+          const finalName = result.fileName || fileName || 'document';
+          const blob = base64ToBlob(result.data, mimeType);
+          return {
+            success: true,
+            blob,
+            fileName: finalName,
+            mimeType,
+          };
+        }
+      }
+    } catch {}
+  }
+
+  // 4. Fallback: Direct Google Drive content export endpoint
   if (fileId && !fileId.startsWith('sample') && fileId !== GDRIVE_FOLDER_ID && !isProtectedRootFolder(fileId)) {
     try {
       const directUrl = `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`;

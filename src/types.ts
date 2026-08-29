@@ -52,6 +52,7 @@ export interface SubmissionFile {
   targetFolderId?: string;
   uploadedAt: string;
   previewUrl?: string;
+  fileData?: string;
 }
 
 export type SubmissionStatus = 'SUBMITTED' | 'REVIEWED' | 'NEEDS_REVISION';
@@ -88,6 +89,8 @@ export interface DocumentItem {
   fileSize: string;
   fileType: string;
   gDriveFolderId: string;
+  gDriveFileId?: string;
+  fileData?: string;
   uploadedBy: string;
   createdAt: string;
   updatedAt: string;

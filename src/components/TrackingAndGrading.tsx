@@ -42,7 +42,7 @@ import {
   downloadGoogleDriveFile,
   triggerNativeBlobDownload,
 } from '../services/driveUpload';
-import { createSubmissionDocxBlob } from '../services/wordExport';
+import { fileCache } from '../services/fileCache';
 import {
   notifySuccess,
   notifyInfo,
@@ -175,22 +175,23 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
     notifyInfo('เปิดโฟลเดอร์ Google Drive 📁');
   };
 
-  // Direct File Download Function - 100% In-Page Immediate Download without opening new tabs/windows
+  // Direct File Download Function - 100% Original File Download
   const handleDownloadFile = async (file: SubmissionFile, sub?: Submission) => {
-    notifyInfo(`กำลังดาวน์โหลดไฟล์ ${file.name}... ⏳`);
+    notifyInfo(`กำลังดาวน์โหลดไฟล์ต้นฉบับ "${file.name}" จาก Google Drive... ⏳`);
 
-    const isImageFile =
-      file.name.match(/\.(png|jpe?g|webp|gif|bmp|svg)$/i) ||
-      file.type?.startsWith('image/');
+    const fileId = file.gDriveFileId || (file.gDriveUrl ? extractDriveFileId(file.gDriveUrl) : null);
+    const relatedTask = tasks.find((t) => t.id === sub?.taskId);
+    const targetFolderId = relatedTask?.gDriveFolderId;
 
-    // 1. If base64 data URL is present in file.previewUrl, convert directly to Blob and download
-    if (file.previewUrl && file.previewUrl.startsWith('data:')) {
+    // 1. If base64 data URL is present in file.previewUrl or file.fileData, convert directly to Blob and download
+    const dataUrlCandidate = file.fileData || (file.previewUrl && file.previewUrl.startsWith('data:') ? file.previewUrl : null);
+    if (dataUrlCandidate && dataUrlCandidate.startsWith('data:')) {
       try {
-        const res = await fetch(file.previewUrl);
+        const res = await fetch(dataUrlCandidate);
         const blob = await res.blob();
-        if (blob.size > 0) {
+        if (blob && blob.size > 0) {
           triggerNativeBlobDownload(blob, file.name);
-          notifySuccess(`ดาวน์โหลด ${file.name} สำเร็จ 📥`);
+          notifySuccess(`ดาวน์โหลด "${file.name}" ต้นฉบับสมบูรณ์เรียบร้อยแล้ว 📥`);
           return;
         }
       } catch (err) {
@@ -198,21 +199,29 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
       }
     }
 
-    // 2. Query Google Drive directly via Google Apps Script Webhook API (downloadFile)
-    const fileId = file.gDriveFileId || (file.gDriveUrl ? extractDriveFileId(file.gDriveUrl) : null);
-    const relatedTask = tasks.find((t) => t.id === sub?.taskId);
-    const targetFolderId = relatedTask?.gDriveFolderId;
+    // 2. Lookup exact original binary file from resilient IndexedDB cache
+    try {
+      const cached = await fileCache.getFile(file.gDriveFileId || file.id || file.name);
+      if (cached && cached.blob && cached.blob.size > 0) {
+        triggerNativeBlobDownload(cached.blob, cached.name || file.name);
+        notifySuccess(`ดาวน์โหลด "${file.name}" ต้นฉบับสมบูรณ์เรียบร้อยแล้ว 📥`);
+        return;
+      }
+    } catch (cacheErr) {
+      console.warn('FileCache retrieval error:', cacheErr);
+    }
 
+    // 3. Query Google Drive directly via Google Apps Script Webhook API (downloadFile)
     if (fileId || file.name) {
       try {
         const driveResult = await downloadGoogleDriveFile(
-          fileId || file.gDriveUrl || '',
+          fileId || file.gDriveUrl || file.id,
           file.name,
           targetFolderId
         );
         if (driveResult.success && driveResult.blob && driveResult.blob.size > 0) {
           triggerNativeBlobDownload(driveResult.blob, driveResult.fileName || file.name);
-          notifySuccess(`ดาวน์โหลด ${file.name} จาก Google Drive สำเร็จ 📥`);
+          notifySuccess(`ดาวน์โหลด "${file.name}" จาก Google Drive สำเร็จเรียบร้อยแล้ว 📥`);
           return;
         }
       } catch (gasErr) {
@@ -220,102 +229,33 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
       }
     }
 
-    // 3. For Image files: Direct CDN or Canvas Generator
-    if (isImageFile) {
-      if (fileId && !fileId.startsWith('sample') && fileId !== GDRIVE_FOLDER_ID && !isProtectedRootFolder(fileId)) {
-        const imageCdnUrl = `https://lh3.googleusercontent.com/d/${fileId}`;
-        try {
-          const res = await fetch(imageCdnUrl, { mode: 'cors' });
-          if (res.ok) {
-            const blob = await res.blob();
-            if (blob.size > 0) {
-              triggerNativeBlobDownload(blob, file.name);
-              notifySuccess(`ดาวน์โหลด ${file.name} สำเร็จ 📥`);
-              return;
-            }
-          }
-        } catch {}
+    // 4. Direct Google Drive file download endpoint
+    if (fileId && !fileId.startsWith('sample') && fileId !== GDRIVE_FOLDER_ID && !isProtectedRootFolder(fileId)) {
+      const driveDownloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+      const win = window.open(driveDownloadUrl, '_blank');
+      if (win) {
+        notifySuccess(`กำลังเริ่มดาวน์โหลด "${file.name}" จาก Google Drive... 📥`);
+        return;
       }
+    }
 
-      // Generate High-Res Proof Image
+    // 5. If it is an accessible HTTP URL
+    if (file.gDriveUrl && file.gDriveUrl.startsWith('http') && !file.gDriveUrl.includes('drive.google.com/drive/folders')) {
       try {
-        const canvas = document.createElement('canvas');
-        canvas.width = 1200;
-        canvas.height = 800;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          const grad = ctx.createLinearGradient(0, 0, 1200, 800);
-          grad.addColorStop(0, '#1e293b');
-          grad.addColorStop(1, '#0f172a');
-          ctx.fillStyle = grad;
-          ctx.fillRect(0, 0, 1200, 800);
-
-          ctx.fillStyle = '#ffffff';
-          if (ctx.roundRect) ctx.roundRect(60, 60, 1080, 680, 24);
-          else ctx.fillRect(60, 60, 1080, 680);
-          ctx.fill();
-
-          ctx.fillStyle = '#2563eb';
-          if (ctx.roundRect) ctx.roundRect(60, 60, 1080, 90, [24, 24, 0, 0]);
-          else ctx.fillRect(60, 60, 1080, 90);
-          ctx.fill();
-
-          ctx.fillStyle = '#ffffff';
-          ctx.font = 'bold 30px sans-serif';
-          ctx.fillText('📄 ไฟล์หลักฐานการส่งงานทางวิชาการ', 100, 118);
-
-          ctx.fillStyle = '#0f172a';
-          ctx.font = 'bold 32px sans-serif';
-          ctx.fillText(`ชื่อไฟล์: ${file.name}`, 100, 220);
-
-          ctx.fillStyle = '#475569';
-          ctx.font = '24px sans-serif';
-          if (sub?.memberName) ctx.fillText(`ผู้ส่งงาน: ${sub.memberName} (${sub.memberSchool || 'โรงเรียนในสังกัด'})`, 100, 290);
-          if (sub?.subject) ctx.fillText(`หัวข้องาน: ${sub.subject}`, 100, 350);
-          ctx.fillText(`ขนาดไฟล์: ${file.size ? (file.size / 1024).toFixed(1) + ' KB' : 'ไฟล์ภาพหลักฐาน'}`, 100, 410);
-          ctx.fillText(`วันที่บันทึก: ${new Date(file.uploadedAt || Date.now()).toLocaleString('th-TH')}`, 100, 470);
-
-          canvas.toBlob((blob) => {
-            if (blob) {
-              triggerNativeBlobDownload(blob, file.name.includes('.') ? file.name : `${file.name}.png`);
-              notifySuccess(`ดาวน์โหลดไฟล์ภาพ ${file.name} สำเร็จ 📥`);
-            }
-          }, 'image/png');
-          return;
+        const res = await fetch(file.gDriveUrl);
+        if (res.ok) {
+          const blob = await res.blob();
+          if (blob.size > 0) {
+            triggerNativeBlobDownload(blob, file.name);
+            notifySuccess(`ดาวน์โหลด "${file.name}" สำเร็จเรียบร้อยแล้ว 📥`);
+            return;
+          }
         }
       } catch {}
     }
 
-    // 4. Word Document (.doc / .docx) Real OpenXML Generator
-    const isWordFile = file.name.match(/\.(docx?|doc)$/i);
-    if (isWordFile) {
-      const docxBlob = await createSubmissionDocxBlob({
-        subject: sub?.subject || 'งานวิชาการที่ได้รับมอบหมาย',
-        fileName: file.name,
-        memberName: sub?.memberName || '-',
-        memberSchool: sub?.memberSchool || 'โรงเรียนในสังกัด',
-        submittedAt: new Date(file.uploadedAt || sub?.submittedAt || Date.now()).toLocaleString('th-TH'),
-        statusText: sub?.status === 'REVIEWED' ? 'ตรวจแล้ว / ผ่านการตรวจสอบแล้ว' : sub?.status === 'NEEDS_REVISION' ? 'ส่งกลับแก้ไข' : 'ส่งแล้ว / รอการตรวจสอบ',
-        score: sub?.score,
-        feedback: sub?.feedback,
-        description: sub?.description,
-      });
-      const targetDocxName = file.name.replace(/\.doc$/i, '.docx');
-      const finalDocxName = targetDocxName.endsWith('.docx') ? targetDocxName : `${targetDocxName}.docx`;
-      triggerNativeBlobDownload(docxBlob, finalDocxName);
-      notifySuccess(`ดาวน์โหลด "${finalDocxName}" สำเร็จและเปิดใช้งานใน Microsoft Word ได้ทันที 📥`);
-      return;
-    }
-
-    // 5. PDF & Other Files Generator
-    try {
-      const docContent = `หัวข้องาน: ${sub?.subject || 'งานวิชาการ'}\nชื่อไฟล์: ${file.name}\nผู้ส่ง: ${sub?.memberName || '-'} (${sub?.memberSchool || '-'})\nวันที่ส่ง: ${new Date(file.uploadedAt || Date.now()).toLocaleString('th-TH')}\nสถานะ: ตรวจสอบและบันทึกในระบบเรียบร้อยแล้ว\n\nหมายเหตุ: เอกสารฉบับนี้ถูกดาวน์โหลดและบันทึกจากระบบบริหารงานวิชาการ`;
-      const blob = new Blob([docContent], { type: 'text/plain;charset=utf-8' });
-      triggerNativeBlobDownload(blob, file.name.includes('.') ? file.name : `${file.name}.txt`);
-      notifySuccess(`ดาวน์โหลด ${file.name} สำเร็จ 📥`);
-    } catch {
-      notifyError('ไม่สามารถดาวน์โหลดไฟล์ได้');
-    }
+    // Fallback notification
+    notifyError(`ไม่สามารถดึงไฟล์ "${file.name}" จาก Google Drive ได้ กรุณาลองเปิดดูผ่าน Google Drive หรือตรวจสอบการเชื่อมต่อ`);
   };
 
   // Open Edit Submission Dialog

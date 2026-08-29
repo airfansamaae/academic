@@ -432,6 +432,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
             gDriveFileId: result.fileId,
             targetFolderId: targetFolderId,
             previewUrl: result.downloadUrl,
+            fileData: result.downloadUrl?.startsWith('data:') ? result.downloadUrl : undefined,
             uploadedAt: new Date().toISOString(),
           } as SubmissionFile;
         } catch (err) {

@@ -31,8 +31,9 @@ import {
   downloadGoogleDriveFile,
   triggerNativeBlobDownload,
   extractDriveFileId,
+  GDRIVE_FOLDER_ID,
 } from '../services/driveUpload';
-import { createDocumentCenterDocxBlob } from '../services/wordExport';
+import { fileCache } from '../services/fileCache';
 import {
   notifySuccess,
   notifyInfo,
@@ -69,6 +70,8 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
   const [docFileType, setDocFileType] = useState('PDF');
   const [docFileSize, setDocFileSize] = useState('');
   const [docFileUrl, setDocFileUrl] = useState('');
+  const [docFileId, setDocFileId] = useState('');
+  const [docFileData, setDocFileData] = useState('');
   const [isUploading, setIsUploading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -158,6 +161,8 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
     setDocFileType('PDF');
     setDocFileSize('');
     setDocFileUrl('');
+    setDocFileId('');
+    setDocFileData('');
     setIsModalOpen(true);
   };
 
@@ -170,6 +175,8 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
     setDocFileType(doc.fileType);
     setDocFileSize(doc.fileSize);
     setDocFileUrl(doc.fileUrl || '');
+    setDocFileId(doc.gDriveFileId || '');
+    setDocFileData(doc.fileData || '');
     setIsModalOpen(true);
   };
 
@@ -202,14 +209,16 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
         ? GDRIVE_OFFICIAL_ORDERS_FOLDER_ID
         : GDRIVE_SAMPLE_DOCS_FOLDER_ID;
 
-    const folderNameLabel = docCategory === 'OFFICIAL_ORDER' ? 'หนังสือคำสั่ง' : 'เอกสารตัวอย่าง';
-
     try {
       const uploadResult = await uploadFileToGoogleDrive(file, targetFolderId);
-      const finalUrl = uploadResult.fileUrl || `https://drive.google.com/drive/folders/${targetFolderId}`;
+      const finalUrl = uploadResult.fileUrl || (uploadResult.fileId ? `https://drive.google.com/file/d/${uploadResult.fileId}/view?usp=sharing` : `https://drive.google.com/drive/folders/${targetFolderId}`);
       setDocFileUrl(finalUrl);
+      if (uploadResult.fileId) setDocFileId(uploadResult.fileId);
+      if (uploadResult.downloadUrl && uploadResult.downloadUrl.startsWith('data:')) {
+        setDocFileData(uploadResult.downloadUrl);
+      }
       setIsUploading(false);
-      notifySuccess(`อัปโหลดไฟล์ "${file.name}" เรียบร้อยแล้ว`);
+      notifySuccess(`อัปโหลดไฟล์ "${file.name}" เข้า Google Drive เรียบร้อยแล้ว ☁️`);
     } catch (err) {
       console.error('Upload error in Document Center:', err);
       setDocFileUrl(`https://drive.google.com/drive/folders/${targetFolderId}`);
@@ -245,8 +254,10 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
         fileSize: docFileSize || '1.0 MB',
         fileUrl: docFileUrl || editingDoc.fileUrl,
         gDriveFolderId: targetFolderId,
+        gDriveFileId: docFileId || editingDoc.gDriveFileId,
+        fileData: docFileData || editingDoc.fileData,
       });
-      notifySuccess('บันทึกการแก้ไขสำเร็จ');
+      notifySuccess('บันทึกการแก้ไขเอกสารสำเร็จ');
     } else {
       StorageService.createDocument({
         title: docTitle.trim(),
@@ -257,9 +268,11 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
         fileSize: docFileSize || '1.0 MB',
         fileUrl: docFileUrl || `https://drive.google.com/drive/folders/${targetFolderId}`,
         gDriveFolderId: targetFolderId,
+        gDriveFileId: docFileId || undefined,
+        fileData: docFileData || undefined,
         uploadedBy: currentUser?.fullName || 'ผู้ดูแลระบบวิชาการ',
       });
-      notifySuccess('เพิ่มเอกสารสำเร็จ');
+      notifySuccess('เพิ่มเอกสารและบันทึกลงระบบสำเร็จ');
     }
 
     setIsModalOpen(false);
@@ -271,7 +284,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
     const categoryName = docToDelete?.category === 'OFFICIAL_ORDER' ? 'หนังสือคำสั่ง' : 'เอกสารตัวอย่าง';
     const ok = await confirmDialog(
       `ยืนยันการลบ${categoryName}นี้?`,
-      `เอกสาร "${docToDelete?.title || ''}" จะถูกลบออกจากระบบ`
+      `เอกสาร "${docToDelete?.title || ''}" จะถูกลบออกจากระบบ (โฟลเดอร์ Google Drive จะถูกเก็บรักษาไว้เสมอ)`
     );
     if (ok) {
       StorageService.deleteDocument(docId);
@@ -283,25 +296,43 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
   const handleDownload = async (doc: DocumentItem) => {
     try {
       const fileName = doc.fileName || `${doc.title}.docx`;
-      notifyInfo(`กำลังเริ่มดาวน์โหลดไฟล์: ${fileName}... ⏳`);
+      notifyInfo(`กำลังดาวน์โหลดไฟล์ต้นฉบับ "${fileName}" จาก Google Drive... ⏳`);
 
       // 1. If document is stored as base64 / data URL
-      if (doc.fileUrl && doc.fileUrl.startsWith('data:')) {
-        const link = document.createElement('a');
-        link.href = doc.fileUrl;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        notifySuccess(`ดาวน์โหลด "${fileName}" สำเร็จเรียบร้อยแล้ว 📥`);
-        return;
+      const dataUrlCandidate = doc.fileData || (doc.fileUrl && doc.fileUrl.startsWith('data:') ? doc.fileUrl : null);
+      if (dataUrlCandidate && dataUrlCandidate.startsWith('data:')) {
+        try {
+          const res = await fetch(dataUrlCandidate);
+          const blob = await res.blob();
+          if (blob && blob.size > 0) {
+            triggerNativeBlobDownload(blob, fileName);
+            notifySuccess(`ดาวน์โหลด "${fileName}" สำเร็จเรียบร้อยแล้ว 📥`);
+            return;
+          }
+        } catch (dataErr) {
+          console.warn('Data URL download fallback:', dataErr);
+        }
       }
 
-      // 2. Query Google Drive directly via Google Apps Script Webhook API (downloadFile)
+      // 2. Lookup exact original binary file from resilient IndexedDB cache
+      try {
+        const cached = await fileCache.getFile(doc.gDriveFileId || doc.fileName || doc.id);
+        if (cached && cached.blob && cached.blob.size > 0) {
+          triggerNativeBlobDownload(cached.blob, cached.name || fileName);
+          notifySuccess(`ดาวน์โหลด "${fileName}" ต้นฉบับสมบูรณ์เรียบร้อยแล้ว 📥`);
+          return;
+        }
+      } catch (cacheErr) {
+        console.warn('FileCache retrieval error:', cacheErr);
+      }
+
+      // 3. Query Google Drive directly via Google Apps Script Webhook API (downloadFile)
       const folderId = doc.category === 'OFFICIAL_ORDER' ? GDRIVE_OFFICIAL_ORDERS_FOLDER_ID : GDRIVE_SAMPLE_DOCS_FOLDER_ID;
+      const fileId = doc.gDriveFileId || (doc.fileUrl ? extractDriveFileId(doc.fileUrl) : undefined);
+
       try {
         const driveResult = await downloadGoogleDriveFile(
-          doc.fileUrl || doc.id,
+          fileId || doc.fileUrl || doc.id,
           fileName,
           folderId
         );
@@ -314,8 +345,18 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
         console.warn('DocumentCenter GAS Webhook file retrieval error:', gasErr);
       }
 
-      // 3. If it is an accessible HTTP URL
-      if (doc.fileUrl && doc.fileUrl.startsWith('http') && !doc.fileUrl.includes('drive.google.com/file/d/sample')) {
+      // 4. Direct Google Drive file download endpoint
+      if (fileId && !fileId.startsWith('sample') && fileId !== GDRIVE_FOLDER_ID && fileId !== GDRIVE_OFFICIAL_ORDERS_FOLDER_ID && fileId !== GDRIVE_SAMPLE_DOCS_FOLDER_ID) {
+        const driveDownloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+        const win = window.open(driveDownloadUrl, '_blank');
+        if (win) {
+          notifySuccess(`กำลังเริ่มดาวน์โหลด "${fileName}" จาก Google Drive... 📥`);
+          return;
+        }
+      }
+
+      // 5. If it is an accessible HTTP URL
+      if (doc.fileUrl && doc.fileUrl.startsWith('http') && !doc.fileUrl.includes('drive.google.com/drive/folders')) {
         try {
           const res = await fetch(doc.fileUrl);
           if (res.ok) {
@@ -326,62 +367,11 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
               return;
             }
           }
-        } catch {
-          // If CORS prevents fetch, fallback to auto-generated official template below
-        }
+        } catch {}
       }
 
-      // 4. Generate realistic official template document binary for immediate direct download
-      const ext = (fileName.split('.').pop() || 'docx').toLowerCase();
-      const isOrder = doc.category === 'OFFICIAL_ORDER';
-      const thaiCategory = isOrder ? 'หนังสือคำสั่งและระเบียบปฏิบัติราชการ' : 'เอกสารตัวอย่างและแบบฟอร์มทางวิชาการ';
-      const todayFormatted = new Date().toLocaleDateString('th-TH', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
-
-      if (ext === 'docx' || ext === 'doc') {
-        const docxBlob = await createDocumentCenterDocxBlob({
-          title: doc.title,
-          categoryName: thaiCategory,
-          fileName: fileName,
-          fileSize: doc.fileSize || '1.5 MB',
-          publishDate: todayFormatted,
-          author: doc.uploadedBy || 'กลุ่มบริหารงานวิชาการ',
-          description: doc.description,
-        });
-        const targetDocxName = fileName.replace(/\.doc$/i, '.docx');
-        const finalDocxName = targetDocxName.endsWith('.docx') ? targetDocxName : `${targetDocxName}.docx`;
-        triggerNativeBlobDownload(docxBlob, finalDocxName);
-        notifySuccess(`ดาวน์โหลด "${finalDocxName}" สำเร็จและเปิดใช้งานใน Microsoft Word ได้ทันที 📥`);
-        return;
-      }
-
-      if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') {
-        const csvContent = `\ufeff"ลำดับ","รหัสเอกสาร","ชื่อรายการเอกสาร","หมวดหมู่","วันที่จัดทำ","ขนาดไฟล์","สถานะ"
-"1","DOC-${doc.id || '01'}","${doc.title}","${thaiCategory}","${todayFormatted}","${doc.fileSize || '1.0 MB'}","พร้อมใช้งาน"
-"2","DESC","คำอธิบาย: ${doc.description || '-'}","","","",""
-`;
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
-        triggerNativeBlobDownload(blob, fileName.endsWith('.csv') ? fileName : `${fileName}.csv`);
-        notifySuccess(`ดาวน์โหลด "${fileName}" สำเร็จเรียบร้อยแล้ว 📥`);
-        return;
-      }
-
-      // Plain text or PDF text fallback
-      const textContent = `========================================================================
-เอกสารศูนย์วิชาการ: ${doc.title}
-หมวดหมู่: ${thaiCategory}
-วันที่: ${todayFormatted}
-------------------------------------------------------------------------
-คำอธิบาย: ${doc.description || 'เอกสารศูนย์วิชาการพร้อมใช้งาน'}
-ผู้จัดทำ: ${doc.uploadedBy || 'กลุ่มบริหารงานวิชาการ'}
-========================================================================
-`;
-      const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
-      triggerNativeBlobDownload(blob, fileName.includes('.') ? fileName : `${fileName}.txt`);
-      notifySuccess(`ดาวน์โหลด "${fileName}" สำเร็จเรียบร้อยแล้ว 📥`);
+      // Fallback notification if no file source found
+      notifyError(`ไม่สามารถดึงไฟล์ "${fileName}" จาก Google Drive ได้ กรุณาตรวจสอบการเชื่อมต่อหรืออัปโหลดไฟล์ใหม่`);
     } catch (err) {
       console.error('Download error:', err);
       notifyError('เกิดข้อผิดพลาดในการดาวน์โหลด กรุณาลองใหม่อีกครั้ง');
