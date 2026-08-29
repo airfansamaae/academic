@@ -224,7 +224,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
         setDocFileData(uploadResult.downloadUrl);
       }
       setIsUploading(false);
-      notifySuccess(`อัปโหลดไฟล์ "${file.name}" เข้า Google Drive เรียบร้อยแล้ว ☁️`);
+      notifySuccess(`อัปโหลดไฟล์ "${file.name}" เรียบร้อยแล้ว ☁️`);
     } catch (err) {
       console.error('Upload error in Document Center:', err);
       setDocFileUrl(`https://drive.google.com/drive/folders/${targetFolderId}`);
@@ -290,7 +290,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
     const categoryName = docToDelete?.category === 'OFFICIAL_ORDER' ? 'หนังสือคำสั่ง' : 'เอกสารตัวอย่าง';
     const ok = await confirmDialog(
       `ยืนยันการลบ${categoryName}นี้?`,
-      `เอกสาร "${docToDelete?.title || ''}" จะถูกลบออกจากระบบ (โฟลเดอร์ Google Drive จะถูกเก็บรักษาไว้เสมอ)`
+      `เอกสาร "${docToDelete?.title || ''}" จะถูกลบออกจากระบบ`
     );
     if (ok) {
       StorageService.deleteDocument(docId);
@@ -306,7 +306,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
     
     if (isPdf) {
       // Clean standard minimal PDF binary with Thai title text
-      const pdfHeader = `%PDF-1.4\n1 0 obj\n<< /Title (${doc.title}) /Creator (Academic Center) /Producer (Google Drive Integration) >>\nendobj\n2 0 obj\n<< /Type /Catalog /Pages 3 0 R >>\nendobj\n3 0 obj\n<< /Type /Pages /Kids [4 0 R] /Count 1 >>\nendobj\n4 0 obj\n<< /Type /Page /Parent 3 0 R /MediaBox [0 0 595 842] /Contents 5 0 R >>\nendobj\n5 0 obj\n<< /Length 95 >>\nstream\nBT\n/F1 16 Tf\n50 800 Td\n(${doc.title}) Tj\n0 -30 Td\n(${doc.description || 'Academic Center Official Document'}) Tj\nET\nendstream\nendobj\nxref\n0 6\n0000000000 65535 f \n0000000009 00000 n \n0000000100 00000 n \n0000000150 00000 n \n0000000210 00000 n \n0000000300 00000 n \ntrailer\n<< /Size 6 /Root 2 0 R /Info 1 0 R >>\nstartxref\n450\n%%EOF`;
+      const pdfHeader = `%PDF-1.4\n1 0 obj\n<< /Title (${doc.title}) /Creator (Academic Center) /Producer (Academic Repository) >>\nendobj\n2 0 obj\n<< /Type /Catalog /Pages 3 0 R >>\nendobj\n3 0 obj\n<< /Type /Pages /Kids [4 0 R] /Count 1 >>\nendobj\n4 0 obj\n<< /Type /Page /Parent 3 0 R /MediaBox [0 0 595 842] /Contents 5 0 R >>\nendobj\n5 0 obj\n<< /Length 95 >>\nstream\nBT\n/F1 16 Tf\n50 800 Td\n(${doc.title}) Tj\n0 -30 Td\n(${doc.description || 'Academic Center Official Document'}) Tj\nET\nendstream\nendobj\nxref\n0 6\n0000000000 65535 f \n0000000009 00000 n \n0000000100 00000 n \n0000000150 00000 n \n0000000210 00000 n \n0000000300 00000 n \ntrailer\n<< /Size 6 /Root 2 0 R /Info 1 0 R >>\nstartxref\n450\n%%EOF`;
       return new Blob([pdfHeader], { type: 'application/pdf' });
     }
     
@@ -321,7 +321,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
       `วันที่บันทึก: ${doc.createdAt || new Date().toLocaleDateString('th-TH')}\r\n` +
       `รายละเอียด:\r\n${doc.description || 'เอกสารต้นฉบับในศูนย์เอกสารวิชาการ'}\r\n\r\n` +
       `-----------------------------------------------------------------\r\n` +
-      `Google Drive Repository ID: ${doc.gDriveFolderId || GDRIVE_FOLDER_ID}\r\n` +
+      `Academic Repository Ref: ${doc.gDriveFolderId || GDRIVE_FOLDER_ID}\r\n` +
       `ระบบบริหารจัดการงานวิชาการ (Academic Management System)\r\n` +
       `=================================================================\r\n`;
     
@@ -374,19 +374,19 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
           );
           if (driveResult.success && driveResult.blob && driveResult.blob.size > 0) {
             triggerNativeBlobDownload(driveResult.blob, driveResult.fileName || fileName);
-            notifySuccess(`ดาวน์โหลด "${fileName}" จาก Google Drive สำเร็จเรียบร้อยแล้ว 📥`);
+            notifySuccess(`ดาวน์โหลด "${fileName}" สำเร็จเรียบร้อยแล้ว 📥`);
             return;
           }
         } catch (gasErr) {
           console.warn('DocumentCenter GAS Webhook file retrieval error:', gasErr);
         }
 
-        // Direct Google Drive download link fallback
+        // Direct download link fallback
         try {
           const driveDownloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
           const win = window.open(driveDownloadUrl, '_blank');
           if (win) {
-            notifySuccess(`กำลังเริ่มดาวน์โหลด "${fileName}" จาก Google Drive... 📥`);
+            notifySuccess(`กำลังเริ่มดาวน์โหลด "${fileName}"... 📥`);
             return;
           }
         } catch {}
@@ -998,7 +998,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
                     className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors shadow-2xs"
                   >
                     <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
-                    <span>เปิดใน Google Drive</span>
+                    <span>เปิดดูเอกสาร</span>
                   </a>
                   <button
                     type="button"
@@ -1050,7 +1050,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
                         {previewDoc.fileName}
                       </h4>
                       <p className="text-xs text-slate-500 mt-1">
-                        {previewDoc.description || 'เอกสารต้นฉบับในศูนย์วิชาการ Google Drive'}
+                        {previewDoc.description || 'เอกสารต้นฉบับในศูนย์วิชาการ'}
                       </p>
                     </div>
 
@@ -1062,7 +1062,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
                         className="w-full sm:w-auto inline-flex items-center justify-center space-x-1.5 px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-colors"
                       >
                         <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
-                        <span>เปิดดูใน Google Drive</span>
+                        <span>เปิดดูเอกสาร</span>
                       </a>
                       <button
                         type="button"
@@ -1081,7 +1081,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
               <div className="px-5 py-3 border-t border-slate-200/80 bg-white flex flex-wrap items-center justify-between gap-3 shrink-0">
                 <div className="text-xs text-slate-500">
                   <span>สถานะ: </span>
-                  <span className="font-semibold text-emerald-600">พร้อมเปิดและดาวน์โหลดจาก Google Drive</span>
+                  <span className="font-semibold text-emerald-600">พร้อมเปิดดูและดาวน์โหลดเอกสาร</span>
                 </div>
                 <div className="flex items-center space-x-2">
                   <button

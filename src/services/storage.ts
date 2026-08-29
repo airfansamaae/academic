@@ -1103,12 +1103,6 @@ export class StorageService {
 
   static updateDocument(doc: DocumentItem): void {
     const list = this.getDocuments();
-    const existingDoc = list.find((d) => d.id === doc.id);
-    if (existingDoc && existingDoc.fileUrl && doc.fileUrl && existingDoc.fileUrl !== doc.fileUrl) {
-      // If document file was replaced, delete old file from Google Drive
-      deleteGoogleDriveFile(existingDoc.fileUrl).catch(() => {});
-    }
-
     const updatedDoc = { ...doc, updatedAt: getNowISO() };
     const updatedList = list.map((d) =>
       d.id === doc.id ? updatedDoc : d
@@ -1121,17 +1115,13 @@ export class StorageService {
 
   static deleteDocument(id: string): void {
     const list = this.getDocuments();
-    const docToDelete = list.find((d) => d.id === id);
 
     this.addDeletedDocId(id);
     const updatedList = list.filter((d) => d.id !== id);
     this.saveDocuments(updatedList);
     CloudflareApiService.deleteDocument(id);
 
-    // Automatic Google Drive Deletion for document file (ทั้งเอกสารตัวอย่าง และ หนังสือคำสั่ง)
-    if (docToDelete?.fileUrl) {
-      deleteGoogleDriveFile(docToDelete.fileUrl).catch(() => {});
-    }
+    // Note: Google Drive files and folders are strictly preserved (no deletion) per user requirements.
 
     broadcastLocalChange('DOCUMENT_DELETED', { id });
   }
@@ -1356,7 +1346,9 @@ export class StorageService {
             t.status !== 'DELETED' &&
             t._deleted !== true &&
             t.type !== 'ANNOUNCEMENT' &&
-            !t.id.startsWith('ann-')
+            t.type !== 'DOCUMENT_ITEM' &&
+            !t.id.startsWith('ann-') &&
+            !t.id.startsWith('doc-')
         );
 
         const mappedTasks: Task[] = nonDeletedCloudTasks.map((t: any) => {
@@ -1628,19 +1620,61 @@ export class StorageService {
         hasChanges = true;
       }
 
-      // 5. Sync Documents (Honor deletion tombstones & Real-time update detection)
-      if (data.documents && Array.isArray(data.documents)) {
+      // 5. Sync Documents (Cross-device realtime synchronization from both documents table & tasks backup)
+      const rawDocTasks = Array.isArray(data.tasks)
+        ? data.tasks.filter((t: any) => t && (t.type === 'DOCUMENT_ITEM' || (t.id && t.id.startsWith('doc-'))))
+        : [];
+
+      const mappedDocTasks: DocumentItem[] = rawDocTasks.map((t: any) => {
+        let meta: any = {};
+        if (t.description) {
+          try {
+            meta = JSON.parse(t.description);
+          } catch {
+            meta = { description: t.description };
+          }
+        }
+        return {
+          id: t.id,
+          title: t.title || 'เอกสารวิชาการ',
+          category: meta.category || t.deadline || 'SAMPLE_DOC',
+          description: meta.description || (typeof meta === 'string' ? meta : ''),
+          fileName: meta.fileName || t.startDate || `${t.title || 'document'}.docx`,
+          fileType: meta.fileType || 'docx',
+          fileSize: meta.fileSize || '1.0 MB',
+          fileUrl: meta.fileUrl || t.gDriveFolderUrl || '',
+          gDriveFolderId: meta.gDriveFolderId || t.gDriveFolderId || GDRIVE_FOLDER_ID,
+          gDriveFileId: meta.gDriveFileId || undefined,
+          uploadedBy: meta.uploadedBy || 'ผู้ดูแลระบบวิชาการ',
+          createdAt: t.createdAt || getNowISO(),
+          updatedAt: t.updatedAt || t.createdAt || getNowISO(),
+        };
+      });
+
+      const rawDocList = [
+        ...(Array.isArray(data.documents) ? data.documents : []),
+        ...mappedDocTasks,
+      ];
+
+      if (rawDocList.length > 0 || Array.isArray(data.documents)) {
         const deletedDocIds = this.getDeletedDocIds();
         const currentDocs = this.getDocuments();
 
         // Detect remote tombstones
-        data.documents.forEach((d: any) => {
-          if (d && d.id && (d.status === 'DELETED' || d._deleted === true || d.category === 'DELETED' || d.title === '[DELETED]')) {
+        rawDocList.forEach((d: any) => {
+          if (
+            d &&
+            d.id &&
+            (d.status === 'DELETED' ||
+              d._deleted === true ||
+              d.category === 'DELETED' ||
+              d.title === '[DELETED]')
+          ) {
             this.addDeletedDocId(d.id);
           }
         });
 
-        const nonDeletedCloudDocs = data.documents.filter(
+        const nonDeletedCloudDocs = rawDocList.filter(
           (d: any) =>
             d &&
             d.id &&

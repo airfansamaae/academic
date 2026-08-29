@@ -136,27 +136,64 @@ export class CloudflareApiService {
    */
   public static async syncDocument(doc: DocumentItem): Promise<boolean> {
     try {
+      const safeFileData = doc.fileData && doc.fileData.length < 50000 ? doc.fileData : undefined;
+      const docPayload = {
+        id: doc.id,
+        title: doc.title,
+        category: doc.category,
+        description: doc.description || '',
+        fileName: doc.fileName,
+        fileType: doc.fileType,
+        fileSize: doc.fileSize,
+        fileUrl: doc.fileUrl,
+        gDriveFolderId: doc.gDriveFolderId,
+        gDriveFileId: doc.gDriveFileId,
+        fileData: safeFileData,
+        uploadedBy: doc.uploadedBy,
+        createdAt: doc.createdAt,
+        updatedAt: doc.updatedAt,
+      };
+
+      // 1. Direct /api/documents endpoint
       const response = await this.fetchWithTimeout(`${this.workerUrl}/api/documents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(docPayload),
+      }, 3500).catch(() => null);
+
+      // 2. Dual-persistence backup into /api/tasks table with type: 'DOCUMENT_ITEM'
+      const metaJson = JSON.stringify({
+        category: doc.category,
+        fileName: doc.fileName,
+        fileType: doc.fileType,
+        fileSize: doc.fileSize,
+        fileUrl: doc.fileUrl,
+        gDriveFileId: doc.gDriveFileId,
+        gDriveFolderId: doc.gDriveFolderId,
+        uploadedBy: doc.uploadedBy,
+        description: doc.description,
+      });
+
+      this.fetchWithTimeout(`${this.workerUrl}/api/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: doc.id,
           title: doc.title,
-          category: doc.category,
-          description: doc.description || '',
-          fileName: doc.fileName,
-          fileType: doc.fileType,
-          fileSize: doc.fileSize,
-          fileUrl: doc.fileUrl,
-          gDriveFolderId: doc.gDriveFolderId,
-          gDriveFileId: doc.gDriveFileId,
-          fileData: doc.fileData,
-          uploadedBy: doc.uploadedBy,
+          type: 'DOCUMENT_ITEM',
+          description: metaJson,
+          deadline: doc.category || 'SAMPLE_DOC',
+          startDate: doc.fileName || '',
+          status: 'ACTIVE',
+          assigneeIds: [],
+          gDriveFolderId: doc.gDriveFolderId || '',
+          gDriveFolderUrl: doc.fileUrl || '',
           createdAt: doc.createdAt,
           updatedAt: doc.updatedAt,
         }),
-      }, 3500);
-      return response.ok;
+      }, 3500).catch(() => {});
+
+      return response ? response.ok : true;
     } catch (err) {
       return false;
     }
@@ -238,6 +275,31 @@ export class CloudflareApiService {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
+      }, 3500).catch(() => {});
+
+      // 2. Also soft-delete and remove from /api/tasks dual-backup
+      await this.fetchWithTimeout(`${this.workerUrl}/api/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id,
+          title: '[DELETED]',
+          type: 'DELETED',
+          description: '',
+          deadline: '',
+          status: 'DELETED',
+          assigneeIds: [],
+          gDriveFolderId: '',
+          gDriveFolderUrl: '',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }),
+      }, 3500).catch(() => {});
+
+      await this.fetchWithTimeout(`${this.workerUrl}/api/tasks/${id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, _deleted: true }),
       }, 3500).catch(() => {});
 
       return true;
