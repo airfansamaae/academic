@@ -1345,11 +1345,10 @@ export class StorageService {
         }
       }
 
-      // 2. Sync Tasks (Honor deletion tombstones & separate regular tasks from announcements)
+      // 2. Sync Tasks (2-Way Safe Merge)
       if (data.tasks && Array.isArray(data.tasks)) {
         const deletedTaskIds = this.getDeletedTaskIds();
         const currentTasks = this.getTasks();
-        const currentTaskIds = new Set(currentTasks.map((t) => t.id));
 
         const nonDeletedCloudTasks = data.tasks.filter(
           (t: any) =>
@@ -1387,30 +1386,49 @@ export class StorageService {
           };
         });
 
-        const cloudTaskIdSet = new Set(mappedTasks.map((t) => t.id));
+        // 2-Way Task Merge:
+        const taskMap = new Map<string, Task>();
+        // Keep valid local tasks
+        currentTasks.forEach((lt) => {
+          if (!deletedTaskIds.has(lt.id)) {
+            taskMap.set(lt.id, lt);
+          }
+        });
 
-        // Any task previously on device that is not on cloud (and older than 20s) was deleted on the server
-        const now = Date.now();
-        for (const localTask of currentTasks) {
-          if (!cloudTaskIdSet.has(localTask.id)) {
-            const taskAgeMs = now - new Date(localTask.createdAt || 0).getTime();
-            if (taskAgeMs > 20000 || isNaN(taskAgeMs)) {
-              this.addDeletedTaskId(localTask.id);
+        // Merge remote tasks
+        for (const remoteTask of mappedTasks) {
+          if (!deletedTaskIds.has(remoteTask.id)) {
+            const existing = taskMap.get(remoteTask.id);
+            if (!existing) {
+              taskMap.set(remoteTask.id, remoteTask);
+              newTasks.push(remoteTask);
               hasChanges = true;
+            } else {
+              const remoteTime = new Date(remoteTask.updatedAt || remoteTask.createdAt || 0).getTime();
+              const localTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+              if (remoteTime > localTime || (remoteTask.gDriveFolderId && remoteTask.gDriveFolderId !== GDRIVE_FOLDER_ID && existing.gDriveFolderId === GDRIVE_FOLDER_ID)) {
+                taskMap.set(remoteTask.id, {
+                  ...existing,
+                  ...remoteTask,
+                  gDriveFolderId: remoteTask.gDriveFolderId || existing.gDriveFolderId,
+                  gDriveFolderUrl: remoteTask.gDriveFolderUrl || existing.gDriveFolderUrl,
+                });
+                hasChanges = true;
+              }
             }
           }
         }
 
-        // Detect newly assigned tasks
-        for (const t of mappedTasks) {
-          if (!currentTaskIds.has(t.id)) {
-            newTasks.push(t);
-            hasChanges = true;
+        // Push any local tasks not on Cloudflare
+        const remoteTaskIdSet = new Set(mappedTasks.map((t) => t.id));
+        for (const [id, localTask] of taskMap.entries()) {
+          if (!remoteTaskIdSet.has(id)) {
+            CloudflareApiService.syncTask(localTask).catch(() => {});
           }
         }
 
         const freshDeletedTaskIds = this.getDeletedTaskIds();
-        const finalTasks = mappedTasks.filter((t) => !freshDeletedTaskIds.has(t.id));
+        const finalTasks = Array.from(taskMap.values()).filter((t) => !freshDeletedTaskIds.has(t.id));
 
         if (hasChanges || finalTasks.length !== currentTasks.length) {
           localStorage.setItem(STORAGE_KEYS.TASKS, JSON.stringify(finalTasks));
@@ -1418,19 +1436,16 @@ export class StorageService {
         }
       }
 
-      // 3. Sync Submissions (Honor deletion tombstones and deleted tasks)
+      // 3. Sync Submissions (2-Way Safe Merge: Never lose member submissions)
       if (data.submissions && Array.isArray(data.submissions)) {
         const deletedSubIds = this.getDeletedSubIds();
         const deletedTaskIds = this.getDeletedTaskIds();
         const currentSubmissions = this.getSubmissions();
-        const currentSubIds = new Set(currentSubmissions.map((s) => s.id));
-        const validTaskIds = new Set(this.getTasks().map((t) => t.id));
 
         const nonDeletedCloudSubs = data.submissions.filter(
           (s: any) =>
             !deletedSubIds.has(s.id) &&
             !deletedTaskIds.has(s.taskId) &&
-            validTaskIds.has(s.taskId) &&
             s.status !== 'DELETED' &&
             s._deleted !== true
         );
@@ -1466,22 +1481,49 @@ export class StorageService {
           };
         });
 
-        for (const sub of mappedSubmissions) {
-          if (!currentSubIds.has(sub.id)) {
-            newSubmissions.push(sub);
-            hasChanges = true;
+        // 2-Way Merge: Keep all local submissions that are not deleted
+        const subMap = new Map<string, Submission>();
+        currentSubmissions.forEach((ls) => {
+          if (!deletedSubIds.has(ls.id) && !deletedTaskIds.has(ls.taskId)) {
+            subMap.set(ls.id, ls);
+          }
+        });
+
+        // Merge remote submissions
+        for (const remoteSub of mappedSubmissions) {
+          if (!deletedSubIds.has(remoteSub.id) && !deletedTaskIds.has(remoteSub.taskId)) {
+            const existing = subMap.get(remoteSub.id);
+            if (!existing) {
+              subMap.set(remoteSub.id, remoteSub);
+              newSubmissions.push(remoteSub);
+              hasChanges = true;
+            } else {
+              const remoteTime = new Date(remoteSub.updatedAt || remoteSub.submittedAt || 0).getTime();
+              const localTime = new Date(existing.updatedAt || existing.submittedAt || 0).getTime();
+              if (remoteTime > localTime || (remoteSub.score !== undefined && existing.score === undefined)) {
+                subMap.set(remoteSub.id, {
+                  ...existing,
+                  ...remoteSub,
+                  files: Array.isArray(remoteSub.files) && remoteSub.files.length > 0 ? remoteSub.files : existing.files,
+                });
+                hasChanges = true;
+              }
+            }
+          }
+        }
+
+        // Push any local submissions not on Cloudflare up to Cloudflare
+        const remoteSubIdSet = new Set(mappedSubmissions.map((s) => s.id));
+        for (const [id, localSub] of subMap.entries()) {
+          if (!remoteSubIdSet.has(id)) {
+            CloudflareApiService.syncSubmission(localSub).catch(() => {});
           }
         }
 
         const freshDeletedSubIds = this.getDeletedSubIds();
         const freshDeletedTaskIds = this.getDeletedTaskIds();
-        const finalValidTaskIds = new Set(this.getTasks().map((t) => t.id));
-
-        const finalSubs = mappedSubmissions.filter(
-          (s) =>
-            !freshDeletedSubIds.has(s.id) &&
-            !freshDeletedTaskIds.has(s.taskId) &&
-            finalValidTaskIds.has(s.taskId)
+        const finalSubs = Array.from(subMap.values()).filter(
+          (s) => !freshDeletedSubIds.has(s.id) && !freshDeletedTaskIds.has(s.taskId)
         );
 
         if (hasChanges || finalSubs.length !== currentSubmissions.length) {

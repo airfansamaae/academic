@@ -117,24 +117,30 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
     return dateA.localeCompare(dateB);
   });
 
+  // Helper to determine if a submission belongs to the current logged-in user
+  const isUserSubmission = (s?: Submission | null) => {
+    if (!s || !currentUser) return false;
+    return (
+      s.memberId === currentUser.id ||
+      (currentUser.username && s.memberId === `user-${currentUser.username}`) ||
+      (currentUser.fullName && s.memberName === currentUser.fullName)
+    );
+  };
+
   // Member Task Separation:
   // 1. Pending (ยังไม่ส่งงาน) - อยู่ข้างบน เรียงตามกำหนดส่งที่ใกล้จะถึงก่อน
   const memberPendingTasks = safeTasks
     .filter((task) => {
       if (!task || !task.id) return false;
       if (!currentUser) return true;
-      return !safeSubmissions.some(
-        (s) => s && s.taskId === task.id && s.memberId === currentUser.id
-      );
+      return !safeSubmissions.some((s) => s && s.taskId === task.id && isUserSubmission(s));
     })
     .sort(sortByDueDateAsc);
 
   // 2. Submitted (ส่งงานแล้ว) - ย้ายไปอยู่ข้างล่างสุด
   const memberSubmittedTasksWithSubmissions = safeTasks
     .map((task) => {
-      const submission = safeSubmissions.find(
-        (s) => s && s.taskId === task.id && s.memberId === currentUser?.id
-      );
+      const submission = safeSubmissions.find((s) => s && s.taskId === task.id && isUserSubmission(s));
       return { task, submission };
     })
     .filter((item): item is { task: Task; submission: Submission } => Boolean(item.submission))
@@ -189,7 +195,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
   useEffect(() => {
     if (preSelectedTask && !isAdmin) {
       const existingSub = safeSubmissions.find(
-        (s) => s && s.taskId === preSelectedTask.id && s.memberId === currentUser?.id
+        (s) => s && s.taskId === preSelectedTask.id && isUserSubmission(s)
       );
       if (existingSub) {
         handleOpenEditSubmissionModal(preSelectedTask, existingSub);

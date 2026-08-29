@@ -18,6 +18,9 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   Paperclip,
+  Eye,
+  ExternalLink,
+  ImageIcon,
 } from 'lucide-react';
 import { User, DocumentItem, DocumentCategory } from '../types';
 import {
@@ -59,6 +62,9 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
 
   // Collapsed Category Sections state: true = collapsed, false = expanded
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
+
+  // Preview Modal State for Eye Icon (Admin & Members)
+  const [previewDoc, setPreviewDoc] = useState<DocumentItem | null>(null);
 
   // Upload/Edit Modal state (Admin)
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -690,6 +696,18 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
                               </div>
                             )}
 
+                            {/* Eye Preview Button for both Admin and Members */}
+                            <button
+                              type="button"
+                              onClick={() => setPreviewDoc(doc)}
+                              className="inline-flex items-center space-x-1 px-2.5 py-1.5 bg-slate-100 hover:bg-purple-50 text-slate-700 hover:text-purple-700 border border-slate-200 hover:border-purple-200 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap"
+                              title={`ดูตัวอย่าง ${doc.fileName}`}
+                            >
+                              <Eye className="w-3.5 h-3.5 text-purple-600" />
+                              <span>ดูตัวอย่าง</span>
+                            </button>
+
+                            {/* Direct Download Button */}
                             <button
                               type="button"
                               onClick={() => handleDownload(doc)}
@@ -880,6 +898,177 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* ==================== PREVIEW FILE VIEWER MODAL (EYE ICON) ================ */}
+      {/* ========================================================================= */}
+      {previewDoc && (() => {
+        const fileId = previewDoc.gDriveFileId || (previewDoc.fileUrl ? extractDriveFileId(previewDoc.fileUrl) : null);
+        const hasValidDriveId = Boolean(fileId && !fileId.startsWith('sample') && fileId !== GDRIVE_FOLDER_ID && fileId !== GDRIVE_OFFICIAL_ORDERS_FOLDER_ID && fileId !== GDRIVE_SAMPLE_DOCS_FOLDER_ID);
+        const directDriveViewUrl = hasValidDriveId
+          ? `https://drive.google.com/file/d/${fileId}/view?usp=sharing`
+          : (previewDoc.fileUrl && previewDoc.fileUrl.startsWith('http') ? previewDoc.fileUrl : GDRIVE_FOLDER_URL);
+
+        const isImage =
+          previewDoc.fileName.match(/\.(png|jpe?g|webp|gif|bmp|svg)$/i) ||
+          previewDoc.fileType?.toLowerCase().includes('image');
+        const isPdf = previewDoc.fileName.endsWith('.pdf') || previewDoc.fileType?.toUpperCase() === 'PDF';
+        const isWord = previewDoc.fileName.match(/\.(docx?|dotx?)$/i) || previewDoc.fileType?.toLowerCase().includes('word');
+        const isSpreadsheet = previewDoc.fileName.match(/\.(xlsx?|csv)$/i) || previewDoc.fileType?.toLowerCase().includes('sheet');
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl max-w-4xl w-full h-[85vh] max-h-[850px] shadow-2xl border border-slate-100 flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+              {/* Modal Header */}
+              <div className="px-5 py-4 border-b border-slate-200/80 bg-slate-50/90 flex items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center space-x-3 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0 border border-purple-200 shadow-2xs">
+                    {isImage ? (
+                      <ImageIcon className="w-5 h-5 text-amber-600" />
+                    ) : isPdf ? (
+                      <FileText className="w-5 h-5 text-rose-600" />
+                    ) : isSpreadsheet ? (
+                      <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                    ) : (
+                      <File className="w-5 h-5 text-purple-600" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center space-x-2">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${
+                        previewDoc.category === 'SAMPLE_DOC'
+                          ? 'bg-teal-50 text-teal-700 border-teal-200'
+                          : 'bg-blue-50 text-blue-700 border-blue-200'
+                      }`}>
+                        {previewDoc.category === 'SAMPLE_DOC' ? 'เอกสารตัวอย่าง' : 'หนังสือคำสั่ง'}
+                      </span>
+                      <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate">
+                        {previewDoc.title}
+                      </h3>
+                    </div>
+                    <p className="text-xs text-slate-500 font-mono mt-0.5 truncate flex items-center space-x-2">
+                      <span>📄 {previewDoc.fileName}</span>
+                      <span>•</span>
+                      <span>ขนาด: {previewDoc.fileSize}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2 shrink-0">
+                  <a
+                    href={directDriveViewUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors shadow-2xs"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+                    <span>เปิดใน Google Drive</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewDoc(null)}
+                    className="w-9 h-9 rounded-xl bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 border border-slate-200 flex items-center justify-center transition-colors cursor-pointer shadow-2xs"
+                    title="ปิดหน้าต่างตัวอย่าง"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Body / Viewer Area */}
+              <div className="flex-1 bg-slate-100/70 p-2 sm:p-4 overflow-hidden relative flex flex-col items-center justify-center">
+                {hasValidDriveId ? (
+                  <iframe
+                    src={`https://drive.google.com/file/d/${fileId}/preview`}
+                    title={previewDoc.fileName}
+                    className="w-full h-full rounded-2xl bg-white border border-slate-200 shadow-inner"
+                    allow="autoplay"
+                  />
+                ) : (previewDoc.fileData && previewDoc.fileData.startsWith('data:image/')) || (previewDoc.fileUrl && previewDoc.fileUrl.startsWith('data:image/')) ? (
+                  <div className="w-full h-full flex items-center justify-center overflow-auto p-4 bg-white rounded-2xl border border-slate-200">
+                    <img
+                      src={previewDoc.fileData || previewDoc.fileUrl}
+                      alt={previewDoc.fileName}
+                      className="max-h-full max-w-full object-contain rounded-lg shadow-md"
+                    />
+                  </div>
+                ) : (previewDoc.fileData && previewDoc.fileData.startsWith('data:application/pdf')) || (previewDoc.fileUrl && previewDoc.fileUrl.startsWith('data:application/pdf')) ? (
+                  <iframe
+                    src={previewDoc.fileData || previewDoc.fileUrl}
+                    title={previewDoc.fileName}
+                    className="w-full h-full rounded-2xl bg-white border border-slate-200"
+                  />
+                ) : (
+                  <div className="max-w-md w-full bg-white rounded-3xl p-6 sm:p-8 text-center border border-slate-200 shadow-sm space-y-4">
+                    <div className="w-16 h-16 bg-purple-50 text-purple-600 rounded-3xl flex items-center justify-center mx-auto ring-8 ring-purple-50/50">
+                      {isWord ? (
+                        <FileText className="w-8 h-8 text-blue-600" />
+                      ) : isSpreadsheet ? (
+                        <FileSpreadsheet className="w-8 h-8 text-emerald-600" />
+                      ) : (
+                        <File className="w-8 h-8 text-purple-600" />
+                      )}
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-slate-900 text-sm sm:text-base">
+                        {previewDoc.fileName}
+                      </h4>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {previewDoc.description || 'เอกสารต้นฉบับในศูนย์วิชาการ Google Drive'}
+                      </p>
+                    </div>
+
+                    <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2">
+                      <a
+                        href={directDriveViewUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="w-full sm:w-auto inline-flex items-center justify-center space-x-1.5 px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-colors"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+                        <span>เปิดดูใน Google Drive</span>
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => handleDownload(previewDoc)}
+                        className="w-full sm:w-auto inline-flex items-center justify-center space-x-1.5 px-4 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition-colors shadow-2xs cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>ดาวน์โหลดไฟล์ต้นฉบับ</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer Controls */}
+              <div className="px-5 py-3 border-t border-slate-200/80 bg-white flex flex-wrap items-center justify-between gap-3 shrink-0">
+                <div className="text-xs text-slate-500">
+                  <span>สถานะ: </span>
+                  <span className="font-semibold text-emerald-600">พร้อมเปิดและดาวน์โหลดจาก Google Drive</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => handleDownload(previewDoc)}
+                    className="inline-flex items-center space-x-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>ดาวน์โหลดไฟล์</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewDoc(null)}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    ปิด
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
