@@ -663,9 +663,31 @@ export class StorageService {
   static isMockSampleDoc(doc: any): boolean {
     if (!doc || !doc.id) return true;
     const id = String(doc.id).toLowerCase();
+    const title = String(doc.title || '').toLowerCase();
+    const fileName = String(doc.fileName || '').toLowerCase();
+    const desc = String(doc.description || '').toLowerCase();
     const fileUrl = String(doc.fileUrl || '').toLowerCase();
 
-    // STRICT: Only match the exact mock/sample IDs or sample URLs, NEVER match real user uploaded documents!
+    // STRICT: Filter out mock/unwanted documents requested for removal
+    if (
+      title.includes('แบบฟอร์มเยี่ยมบ้าน') ||
+      title.includes('เยี่ยมบ้าน') ||
+      fileName.includes('แบบฟอร์มเยี่ยมบ้าน') ||
+      fileName.includes('เยี่ยมบ้าน') ||
+      desc.includes('แบบฟอร์มเยี่ยมบ้าน') ||
+      desc.includes('เยี่ยมบ้าน') ||
+      title.includes('ตารางเวร ทำความสะอาด') ||
+      title.includes('ตารางเวร') ||
+      title.includes('ทำความสะอาด') ||
+      fileName.includes('ตารางเวร') ||
+      fileName.includes('ทำความสะอาด') ||
+      desc.includes('ตารางเวร') ||
+      desc.includes('ทำความสะอาด')
+    ) {
+      return true;
+    }
+
+    // STRICT: Match exact mock/sample IDs or sample URLs
     if (
       id === 'doc-01' ||
       id === 'doc-02' ||
@@ -1055,7 +1077,17 @@ export class StorageService {
         docs = [];
       }
     }
-    const cleanDocs = docs.filter((d) => !this.isMockSampleDoc(d));
+    const cleanDocs: DocumentItem[] = [];
+    for (const d of docs) {
+      if (this.isMockSampleDoc(d)) {
+        if (d && d.id) {
+          this.addDeletedDocId(d.id);
+          CloudflareApiService.deleteDocument(d.id).catch(() => {});
+        }
+      } else {
+        cleanDocs.push(d);
+      }
+    }
     if (cleanDocs.length !== docs.length) {
       localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(cleanDocs));
     }

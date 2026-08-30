@@ -436,6 +436,13 @@ function doGet(e) {
  */
 export function getActiveGasWebhookUrl(): string {
   try {
+    const rawV2 = localStorage.getItem('academic_app_settings_v2');
+    if (rawV2) {
+      const parsed = JSON.parse(rawV2);
+      if (parsed && typeof parsed.gasWebhookUrl === 'string' && parsed.gasWebhookUrl.trim().startsWith('http')) {
+        return parsed.gasWebhookUrl.trim();
+      }
+    }
     const raw = localStorage.getItem('academic_settings');
     if (raw) {
       const parsed = JSON.parse(raw);
