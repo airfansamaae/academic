@@ -136,7 +136,7 @@ export class CloudflareApiService {
    */
   public static async syncDocument(doc: DocumentItem): Promise<boolean> {
     try {
-      const safeFileData = doc.fileData && doc.fileData.length < 50000 ? doc.fileData : undefined;
+      const safeFileData = doc.fileData && doc.fileData.length < 500000 ? doc.fileData : undefined;
       const docPayload = {
         id: doc.id,
         title: doc.title,

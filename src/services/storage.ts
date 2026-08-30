@@ -258,64 +258,7 @@ const INITIAL_SUBMISSIONS: Submission[] = [
   },
 ];
 
-const INITIAL_DOCUMENTS: DocumentItem[] = [
-  {
-    id: 'doc-01',
-    title: 'แบบฟอร์มแผนการจัดการเรียนรู้ตามแนวทาง Active Learning (Template 2569)',
-    category: 'SAMPLE_DOC',
-    description: 'เทมเพลตมาตรฐานสำหรับเขียนแผนการจัดการเรียนรู้ พร้อมตัวอย่างการวัดประเมินผลตามสภาพจริง',
-    fileName: 'Template_Active_Learning_Plan_2569.docx',
-    fileSize: '1.8 MB',
-    fileType: 'DOCX',
-    fileUrl: `https://drive.google.com/file/d/sample_template/view`,
-    gDriveFolderId: GDRIVE_FOLDER_ID,
-    uploadedBy: 'ผู้ดูแลระบบวิชาการ',
-    createdAt: '2026-08-10T09:00:00.000Z',
-    updatedAt: '2026-08-10T09:00:00.000Z',
-  },
-  {
-    id: 'doc-02',
-    title: 'ตัวอย่างแบบรายงานวิจัยปฏิบัติการในชั้นเรียน 5 บท (ฉบับย่อ)',
-    category: 'SAMPLE_DOC',
-    description: 'แนวทางการเขียนงานวิจัยในชั้นเรียน พร้อมตัวชี้วัดและตัวอย่างการวิเคราะห์สถิติ',
-    fileName: 'Example_Classroom_Research_5_Chapters.pdf',
-    fileSize: '3.2 MB',
-    fileType: 'PDF',
-    fileUrl: `https://drive.google.com/file/d/sample_research/view`,
-    gDriveFolderId: GDRIVE_FOLDER_ID,
-    uploadedBy: 'ผู้ดูแลระบบวิชาการ',
-    createdAt: '2026-08-12T10:30:00.000Z',
-    updatedAt: '2026-08-12T10:30:00.000Z',
-  },
-  {
-    id: 'doc-03',
-    title: 'คำสั่งแต่งตั้งคณะกรรมการบริหารงานวิชาการและประเมินผลการเรียนรู้ ประจำปีการศึกษา 2569',
-    category: 'OFFICIAL_ORDER',
-    description: 'คำสั่งโรงเรียนที่ 124/2569 เรื่อง แต่งตั้งคณะกรรมการฝ่ายวิชาการและหน้าที่ความรับผิดชอบ',
-    fileName: 'Order_Academic_Committee_124_2569.pdf',
-    fileSize: '2.4 MB',
-    fileType: 'PDF',
-    fileUrl: `https://drive.google.com/file/d/sample_order_124/view`,
-    gDriveFolderId: GDRIVE_FOLDER_ID,
-    uploadedBy: 'ผู้ดูแลระบบวิชาการ',
-    createdAt: '2026-08-01T08:00:00.000Z',
-    updatedAt: '2026-08-01T08:00:00.000Z',
-  },
-  {
-    id: 'doc-04',
-    title: 'คำสั่งมอบหมายภาระงานสอนและการปฏิบัติหน้าที่พิเศษ ภาคเรียนที่ 1/2569',
-    category: 'OFFICIAL_ORDER',
-    description: 'คำสั่งโรงเรียนที่ 135/2569 แจ้งตารางสอนและหน้าที่ครูประจำชั้น/ครูเวรประจำวัน',
-    fileName: 'Order_Teaching_Assignment_135_2569.pdf',
-    fileSize: '4.1 MB',
-    fileType: 'PDF',
-    fileUrl: `https://drive.google.com/file/d/sample_order_135/view`,
-    gDriveFolderId: GDRIVE_FOLDER_ID,
-    uploadedBy: 'ผู้ดูแลระบบวิชาการ',
-    createdAt: '2026-08-08T11:00:00.000Z',
-    updatedAt: '2026-08-08T11:00:00.000Z',
-  },
-];
+const INITIAL_DOCUMENTS: DocumentItem[] = [];
 
 const INITIAL_SETTINGS: SystemSettings = {
   schoolName: 'สำนักงานเขตพื้นที่การศึกษา / สถานศึกษาต้นแบบวิชาการ',
@@ -700,10 +643,53 @@ export class StorageService {
   static getDeletedDocIds(): Set<string> {
     try {
       const raw = localStorage.getItem(STORAGE_KEYS.DELETED_DOCUMENTS);
-      return new Set(raw ? JSON.parse(raw) : []);
+      const set: Set<string> = new Set(raw ? JSON.parse(raw) : []);
+      // Permanently blacklist legacy mock/sample document IDs
+      set.add('doc-01');
+      set.add('doc-02');
+      set.add('doc-03');
+      set.add('doc-04');
+      set.add('sample_template');
+      set.add('sample_research');
+      set.add('sample_order_124');
+      set.add('sample_order_135');
+      return set;
     } catch {
-      return new Set();
+      return new Set(['doc-01', 'doc-02', 'doc-03', 'doc-04', 'sample_template', 'sample_research', 'sample_order_124', 'sample_order_135']);
     }
+  }
+
+  static isMockSampleDoc(doc: any): boolean {
+    if (!doc || !doc.id) return true;
+    const deletedDocIds = this.getDeletedDocIds();
+    if (deletedDocIds.has(doc.id)) return true;
+    const id = String(doc.id).toLowerCase();
+    const title = String(doc.title || '').toLowerCase();
+    const fileName = String(doc.fileName || '').toLowerCase();
+    const fileUrl = String(doc.fileUrl || '').toLowerCase();
+
+    if (
+      id === 'doc-01' ||
+      id === 'doc-02' ||
+      id === 'doc-03' ||
+      id === 'doc-04' ||
+      title.includes('เยี่ยมบ้าน') ||
+      title.includes('ตารางเวร') ||
+      title.includes('active learning (template 2569)') ||
+      title.includes('ตัวอย่างแบบรายงานวิจัย') ||
+      title.includes('แต่งตั้งคณะกรรมการบริหารงานวิชาการ') ||
+      title.includes('มอบหมายภาระงานสอนและการปฏิบัติหน้าที่พิเศษ') ||
+      fileName.includes('template_active_learning') ||
+      fileName.includes('example_classroom_research') ||
+      fileName.includes('order_academic_committee') ||
+      fileName.includes('order_teaching_assignment') ||
+      fileUrl.includes('sample_template') ||
+      fileUrl.includes('sample_research') ||
+      fileUrl.includes('sample_order')
+    ) {
+      return true;
+    }
+    return false;
   }
 
   static addDeletedDocId(id: string): void {
@@ -1064,8 +1050,11 @@ export class StorageService {
         docs = [];
       }
     }
-    const deletedDocIds = this.getDeletedDocIds();
-    return docs.filter((d) => d && d.id && !deletedDocIds.has(d.id));
+    const cleanDocs = docs.filter((d) => !this.isMockSampleDoc(d));
+    if (cleanDocs.length !== docs.length) {
+      localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(cleanDocs));
+    }
+    return cleanDocs;
   }
 
   static saveDocuments(docs: DocumentItem[]): void {
@@ -1679,6 +1668,7 @@ export class StorageService {
             d &&
             d.id &&
             !deletedDocIds.has(d.id) &&
+            !this.isMockSampleDoc(d) &&
             d.status !== 'DELETED' &&
             d.category !== 'DELETED' &&
             d.title !== '[DELETED]' &&
@@ -1705,14 +1695,26 @@ export class StorageService {
         const mergedDocsMap = new Map<string, DocumentItem>();
         mappedDocs.forEach((d) => mergedDocsMap.set(d.id, d));
 
-        // 2-Way Merge: Keep local docs that are not deleted and push new local ones
-        const remoteDocIdSet = new Set(mappedDocs.map((d) => d.id));
+        // Server is source of truth: If a local document was deleted on the server, purge it
+        const now = Date.now();
         currentDocs.forEach((d) => {
+          if (this.isMockSampleDoc(d)) {
+            this.addDeletedDocId(d.id);
+            hasChanges = true;
+            return;
+          }
+
           if (!deletedDocIds.has(d.id)) {
             const remote = mergedDocsMap.get(d.id);
             if (!remote) {
-              mergedDocsMap.set(d.id, d);
-              if (!remoteDocIdSet.has(d.id)) {
+              const docAgeMs = now - new Date(d.createdAt || 0).getTime();
+              if (docAgeMs > 15000 || isNaN(docAgeMs)) {
+                // Deleted on server (Admin deleted) -> purge from member device
+                this.addDeletedDocId(d.id);
+                hasChanges = true;
+              } else {
+                // Recently created locally (<15s) -> sync up to cloud
+                mergedDocsMap.set(d.id, d);
                 CloudflareApiService.syncDocument(d).catch(() => {});
               }
             } else {
@@ -1730,7 +1732,9 @@ export class StorageService {
         });
 
         const freshDeletedDocIds = this.getDeletedDocIds();
-        const finalDocs = Array.from(mergedDocsMap.values()).filter((d) => !freshDeletedDocIds.has(d.id));
+        const finalDocs = Array.from(mergedDocsMap.values()).filter(
+          (d) => !freshDeletedDocIds.has(d.id) && !this.isMockSampleDoc(d)
+        );
 
         if (finalDocs.length !== currentDocs.length) {
           localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(finalDocs));

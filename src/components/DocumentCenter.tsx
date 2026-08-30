@@ -33,6 +33,7 @@ import {
   uploadFileToGoogleDrive,
   downloadGoogleDriveFile,
   triggerNativeBlobDownload,
+  base64ToBlob,
   extractDriveFileId,
   GDRIVE_FOLDER_ID,
 } from '../services/driveUpload';
@@ -322,6 +323,30 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
       const fileName = doc.fileName || `${doc.title}.${(doc.fileType || 'docx').toLowerCase()}`;
       notifyInfo(`กำลังดาวน์โหลดไฟล์ "${fileName}"... 📥`);
 
+      // 1. Instant 1-Click: If stored as Base64 Data URL (Exact original file, 0ms latency)
+      const dataUrlCandidate = doc.fileData || (doc.fileUrl && doc.fileUrl.startsWith('data:') ? doc.fileUrl : null);
+      if (dataUrlCandidate && dataUrlCandidate.startsWith('data:')) {
+        try {
+          const mimeType = doc.fileType ? `application/${doc.fileType.toLowerCase()}` : 'application/octet-stream';
+          const blob = base64ToBlob(dataUrlCandidate, mimeType);
+          if (blob && blob.size > 0) {
+            triggerNativeBlobDownload(blob, fileName);
+            notifySuccess(`ดาวน์โหลด "${fileName}" สำเร็จเรียบร้อยแล้ว 📥`);
+            return;
+          }
+        } catch (dataErr) {
+          try {
+            const res = await fetch(dataUrlCandidate);
+            const blob = await res.blob();
+            if (blob && blob.size > 0) {
+              triggerNativeBlobDownload(blob, fileName);
+              notifySuccess(`ดาวน์โหลด "${fileName}" สำเร็จเรียบร้อยแล้ว 📥`);
+              return;
+            }
+          } catch {}
+        }
+      }
+
       const fileId = doc.gDriveFileId || (doc.fileUrl ? extractDriveFileId(doc.fileUrl) : undefined);
       const targetFolderId = doc.category === 'OFFICIAL_ORDER' ? GDRIVE_OFFICIAL_ORDERS_FOLDER_ID : GDRIVE_SAMPLE_DOCS_FOLDER_ID;
       const hasValidDriveId = Boolean(
@@ -334,7 +359,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
         fileId !== GDRIVE_SAMPLE_DOCS_FOLDER_ID
       );
 
-      // 1. If original binary exists in local IndexedDB cache
+      // 2. If original binary exists in local IndexedDB cache
       try {
         const cached = await fileCache.getFile(fileId || doc.fileName || doc.id);
         if (cached && cached.blob && cached.blob.size > 0) {
@@ -346,7 +371,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
         console.warn('FileCache retrieval error:', cacheErr);
       }
 
-      // 2. Fetch original binary directly via GAS Webhook API
+      // 3. Fetch original binary directly via GAS Webhook API
       try {
         const driveResult = await downloadGoogleDriveFile(
           fileId || doc.fileUrl,
@@ -362,7 +387,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
         console.warn('DocumentCenter GAS Webhook file retrieval error:', gasErr);
       }
 
-      // 3. Direct file stream download
+      // 4. Direct file stream download
       if (hasValidDriveId) {
         try {
           const directDriveDownloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`;
@@ -379,22 +404,6 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
           return;
         } catch (linkErr) {
           console.warn('Direct link download error:', linkErr);
-        }
-      }
-
-      // 4. If stored as Base64 Data URL
-      const dataUrlCandidate = doc.fileData || (doc.fileUrl && doc.fileUrl.startsWith('data:') ? doc.fileUrl : null);
-      if (dataUrlCandidate && dataUrlCandidate.startsWith('data:')) {
-        try {
-          const res = await fetch(dataUrlCandidate);
-          const blob = await res.blob();
-          if (blob && blob.size > 0) {
-            triggerNativeBlobDownload(blob, fileName);
-            notifySuccess(`ดาวน์โหลด "${fileName}" สำเร็จเรียบร้อยแล้ว 📥`);
-            return;
-          }
-        } catch (dataErr) {
-          console.warn('Data URL download fallback:', dataErr);
         }
       }
 
