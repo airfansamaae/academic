@@ -567,10 +567,10 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
   const handleDeleteMemberSubmission = async (submission: Submission) => {
     const ok = await confirmDialog(
       'ยืนยันการลบผลงานนี้?',
-      'รายการส่งงานและไฟล์ทั้งหมดใน Google Drive จะถูกลบออกอัตโนมัติ'
+      'รายการส่งงานและไฟล์แนบทั้งหมดจะถูกลบออกจากระบบอัตโนมัติ'
     );
     if (ok) {
-      // Auto delete files from Google Drive
+      // Auto delete files from storage
       if (Array.isArray(submission.files)) {
         const relatedTask = tasks.find((t) => t.id === submission.taskId);
         const targetFolderId = relatedTask?.gDriveFolderId || GDRIVE_FOLDER_ID;
@@ -579,7 +579,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
         });
       }
       StorageService.deleteSubmission(submission.id);
-      notifySuccess('ลบรายการส่งงานและไฟล์ใน Google Drive สำเร็จ');
+      notifySuccess('ลบรายการส่งงานและไฟล์แนบสำเร็จ');
       if (activeTaskForSubmission) {
         setActiveTaskForSubmission(null);
         setEditingSubmission(null);
@@ -783,7 +783,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                       <tr className="border-b border-purple-100 bg-purple-50/60 text-purple-900">
                         <th className="py-2.5 px-3 rounded-l-lg font-bold">หมวดหมู่ & หัวข้องาน</th>
                         <th className="py-2.5 px-3 font-bold">กำหนดส่ง (DD/MM/YYYY)</th>
-                        <th className="py-2.5 px-3 font-bold">Google Drive</th>
+                        <th className="py-2.5 px-3 font-bold">โฟลเดอร์จัดเก็บ</th>
                         <th className="py-2.5 px-3 font-bold">สถานะการส่งงาน (สีเขียว)</th>
                         <th className="py-2.5 px-3 rounded-r-lg font-bold text-right">การจัดการ</th>
                       </tr>
@@ -792,7 +792,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                       {adminSortedTasks.map((task, idx) => {
                         const taskSubmissions = safeSubmissions.filter((s) => s && s.taskId === task.id);
                         return (
-                          <tr key={task.id} className="hover:bg-purple-50/30 transition-colors">
+                           <tr key={task.id} className="hover:bg-purple-50/30 transition-colors">
                             <td className="py-2.5 px-3">
                               <div className="flex items-center space-x-2">
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 border border-purple-200 whitespace-nowrap">
@@ -821,7 +821,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                                   target="_blank"
                                   rel="noreferrer"
                                   className="text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-md transition-colors inline-flex items-center space-x-1"
-                                  title="เปิดโฟลเดอร์งานนี้ใน Google Drive"
+                                  title="เปิดโฟลเดอร์จัดเก็บของงานนี้"
                                 >
                                   <HardDrive className="w-3.5 h-3.5 text-emerald-600" />
                                   <span>เปิดโฟลเดอร์</span>
@@ -1447,7 +1447,7 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                                 type="button"
                                 onClick={() => handleDeleteMemberSubmission(submission)}
                                 className="px-2.5 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-all inline-flex items-center space-x-1 cursor-pointer"
-                                title="ลบผลงานนี้ออกจากระบบและ Google Drive"
+                                title="ลบผลงานนี้ออกจากระบบ"
                               >
                                 <Trash2 className="w-3.5 h-3.5 text-rose-600" />
                                 <span>ลบงาน</span>

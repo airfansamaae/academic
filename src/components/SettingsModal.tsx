@@ -637,7 +637,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div className="p-3 bg-emerald-50/80 rounded-2xl border border-emerald-200/80 flex items-center space-x-2.5 text-emerald-800">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
                 <span className="text-[11px] font-medium">
-                  ระบบจัดเก็บไฟล์ Google Drive และฐานข้อมูลหลังบ้านเชื่อมต่อพร้อมใช้งานสมบูรณ์
+                  ระบบจัดเก็บไฟล์คลาวด์และฐานข้อมูลหลังบ้านเชื่อมต่อพร้อมใช้งานสมบูรณ์
                 </span>
               </div>
 

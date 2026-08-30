@@ -282,7 +282,7 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
 
     const ok = await confirmDialog(
       'ยืนยันการลบผลงานนี้?',
-      'รายการส่งงานและไฟล์ทั้งหมดใน Google Drive จะถูกลบออกอัตโนมัติ'
+      'รายการส่งงานและไฟล์แนบทั้งหมดจะถูกลบออกจากระบบอัตโนมัติ'
     );
     if (ok) {
       if (Array.isArray(sub.files)) {
@@ -293,7 +293,7 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
         });
       }
       StorageService.deleteSubmission(sub.id);
-      notifySuccess('ลบรายการส่งงานและไฟล์ใน Google Drive สำเร็จ');
+      notifySuccess('ลบรายการส่งงานและไฟล์แนบสำเร็จ');
       onRefreshData();
     }
   };
@@ -345,9 +345,9 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
             </div>
           </div>
 
-          {/* Controls: Admin Google Drive Button & Task Filter */}
+          {/* Controls: Admin Cloud Storage Button & Task Filter */}
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Google Drive Folder Button (ONLY for Admin) */}
+            {/* Cloud Storage Folder Button (ONLY for Admin) */}
             {isAdmin && (
               <a
                 href={
@@ -357,12 +357,12 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
                 }
                 target="_blank"
                 rel="noreferrer"
-                id="btn-admin-google-drive"
+                id="btn-admin-cloud-storage"
                 className="px-3.5 py-2 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-xl transition-all inline-flex items-center space-x-1.5 shadow-2xs cursor-pointer active:scale-95"
-                title="เข้าสู่โฟลเดอร์หลักใน Google Drive (เฉพาะ Admin)"
+                title="เข้าสู่โฟลเดอร์จัดเก็บหลัก (เฉพาะ Admin)"
               >
                 <HardDrive className="w-4 h-4 text-emerald-600" />
-                <span>Google Drive</span>
+                <span>คลาวด์ไฟล์</span>
                 <ExternalLink className="w-3.5 h-3.5 text-emerald-600" />
               </a>
             )}
@@ -504,10 +504,10 @@ export const TrackingAndGrading: React.FC<TrackingAndGradingProps> = ({
                         rel="noreferrer"
                         onClick={(e) => e.stopPropagation()}
                         className="hidden sm:inline-flex items-center space-x-1 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-lg transition-colors"
-                        title="เปิดโฟลเดอร์ Google Drive ของงานนี้ (เฉพาะ Admin)"
+                        title="เปิดโฟลเดอร์จัดเก็บของงานนี้ (เฉพาะ Admin)"
                       >
                         <HardDrive className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>ไดรฟ์ของงาน</span>
+                        <span>โฟลเดอร์ของงาน</span>
                       </a>
                     )}
 

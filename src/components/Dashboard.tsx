@@ -362,26 +362,40 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // 1. Announcements: Upcoming within 15 days
+    // 1. Announcements: Upcoming within 15 days and active until event date / end date
     announcements.forEach((ann) => {
       if (!ann.date) return;
-      const parts = ann.date.split('-').map(Number);
-      if (parts.length < 3) return;
-      const [y, m, d] = parts;
-      const annDate = new Date(y, m - 1, d);
-      annDate.setHours(0, 0, 0, 0);
-      const diffTime = annDate.getTime() - today.getTime();
-      const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+      // If multi-day announcement, check against end date for expiry
+      const effectiveEndDateStr = ann.endDate || ann.date;
+      const endParts = effectiveEndDateStr.split('-').map(Number);
+      const startParts = ann.date.split('-').map(Number);
+      if (startParts.length < 3 || endParts.length < 3) return;
 
-      // Show announcements if upcoming within 15 days (including today)
-      if (diffDays >= -1 && diffDays <= 15) {
+      const [sy, sm, sd] = startParts;
+      const [ey, em, ed] = endParts;
+
+      const annStartDate = new Date(sy, sm - 1, sd);
+      annStartDate.setHours(0, 0, 0, 0);
+
+      const annEndDate = new Date(ey, em - 1, ed);
+      annEndDate.setHours(23, 59, 59, 999);
+
+      // Difference in days from today to the start date
+      const startDiffTime = annStartDate.getTime() - today.getTime();
+      const startDiffDays = Math.round(startDiffTime / (1000 * 60 * 60 * 24));
+
+      // Check if the announcement has expired (event end date is before today)
+      const isExpired = today.getTime() > annEndDate.getTime();
+
+      // Show announcements if starting within upcoming 15 days and not yet expired
+      if (!isExpired && startDiffDays <= 15) {
         list.push({
           id: `ann-${ann.id}`,
           category: 'ANNOUNCEMENT',
           title: ann.title,
           details: ann.details || 'ประกาศแจ้งเพื่อทราบสำหรับบุคลากรทุกคน',
           date: ann.date,
-          diffDays,
+          diffDays: Math.max(0, startDiffDays),
           item: ann,
           theme: 'YELLOW',
         });
@@ -854,90 +868,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             );
           })}
-        </div>
-
-        {/* Color & Style Legend (LEGENG) — Placed at the bottom of the calendar */}
-        <div className="mt-5 pt-4 border-t border-slate-100">
-          <div className="bg-slate-50/80 rounded-2xl p-3.5 sm:p-4 border border-slate-200/70 space-y-2.5">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <span className="text-slate-700 font-bold text-xs flex items-center space-x-1.5">
-                <span>📌</span>
-                <span>คำอธิบายสัญลักษณ์และสีปฏิทิน (LEGENG)</span>
-              </span>
-              <span className="text-[11px] text-slate-400">
-                คลิกที่รายการในปฏิทินเพื่อดูรายละเอียดเพิ่มเติม
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 pt-2 border-t border-slate-200/60 text-xs">
-              {/* Part 1: Color Meanings */}
-              <div className="space-y-2">
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  1. แยกสีชัดเจนตามประเภทและสถานะ:
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <div className="flex items-center space-x-2 bg-white p-2 rounded-xl border border-slate-200/80 shadow-2xs">
-                    <span className="w-3 h-3 rounded-full bg-rose-500 ring-2 ring-rose-200 shrink-0"></span>
-                    <span className="text-slate-700 leading-tight">
-                      <strong className="text-rose-700">🔴 สีแดง:</strong> งานมอบหมาย (ยังไม่ส่ง / ไม่ครบ)
-                    </span>
-                  </div>
-                  <div className="flex items-center space-x-2 bg-white p-2 rounded-xl border border-slate-200/80 shadow-2xs">
-                    <span className="w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-emerald-200 shrink-0"></span>
-                    <span className="text-slate-700 leading-tight">
-                      <strong className="text-emerald-700">🟢 สีเขียว:</strong> งานมอบหมาย (ส่งแล้ว / ส่งครบ)
-                    </span>
-                  </div>
-                  <div className="flex items-center space-x-2 bg-white p-2 rounded-xl border border-slate-200/80 shadow-2xs">
-                    <span className="w-3 h-3 rounded-full bg-amber-500 ring-2 ring-amber-200 shrink-0"></span>
-                    <span className="text-slate-700 leading-tight">
-                      <strong className="text-amber-700">🟡 สีส้ม:</strong> ประกาศแจ้งเพื่อทราบ / วันสำคัญ
-                    </span>
-                  </div>
-                  <div className="flex items-center space-x-2 bg-white p-2 rounded-xl border border-slate-200/80 shadow-2xs">
-                    <span className="w-3 h-3 rounded-full bg-blue-600 ring-2 ring-blue-200 shrink-0"></span>
-                    <span className="text-slate-700 leading-tight">
-                      <strong className="text-blue-700">🔵 สีน้ำเงิน:</strong> หนังสือคำสั่ง (ศูนย์เอกสาร)
-                    </span>
-                  </div>
-                  <div className="flex items-center space-x-2 bg-white p-2 rounded-xl border border-slate-200/80 shadow-2xs sm:col-span-2">
-                    <span className="w-3 h-3 rounded-full bg-teal-600 ring-2 ring-teal-200 shrink-0"></span>
-                    <span className="text-slate-700 leading-tight">
-                      <strong className="text-teal-700">🩵 สีเขียวหัวเป็ด/ทีล:</strong> เอกสารตัวอย่างและแบบฟอร์ม (ศูนย์เอกสาร)
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Part 2: Timeline Formats (Single day vs Multi-day Range) */}
-              <div className="space-y-2 lg:border-l lg:border-slate-200 lg:pl-4">
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  2. ลักษณะการแสดงผลบนปฏิทิน:
-                </p>
-                <div className="flex flex-col space-y-2">
-                  <div className="flex items-center space-x-2.5 bg-white p-2 rounded-xl border border-slate-200/80 shadow-2xs">
-                    <div className="px-2 py-0.5 rounded-lg bg-purple-100 border border-purple-300 text-purple-900 text-[10px] font-bold inline-flex items-center space-x-1 shrink-0">
-                      <span className="w-1.5 h-1.5 rounded-full bg-purple-600"></span>
-                      <span>● 1 จุด</span>
-                    </div>
-                    <span className="text-slate-700">
-                      <strong>วันเดียว:</strong> แสดง 1 จุดเดี่ยว สำหรับกำหนดส่งวันเดียวหรือเอกสารรายวัน
-                    </span>
-                  </div>
-
-                  <div className="flex items-center space-x-2.5 bg-white p-2 rounded-xl border border-slate-200/80 shadow-2xs">
-                    <div className="px-2 py-0.5 rounded-md bg-purple-100 border-y border-purple-300 text-purple-900 text-[10px] font-bold inline-flex items-center space-x-1 shrink-0">
-                      <span className="w-1.5 h-1.5 rounded-full bg-purple-600"></span>
-                      <span>━━━━▶</span>
-                    </div>
-                    <span className="text-slate-700">
-                      <strong>ช่วงเวลา (2-3 วันขึ้นไป):</strong> จุดเชื่อมกันเป็นแถบยาวต่อเนื่องตลอดช่วงเวลา
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
 
