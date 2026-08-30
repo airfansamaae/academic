@@ -16,6 +16,7 @@ import {
   deleteGoogleDriveFolder,
   isProtectedRootFolder,
   restoreProtectedGoogleDriveRootFolders,
+  extractDriveFileId,
   GDRIVE_FOLDER_ID,
   GDRIVE_FOLDER_URL,
   GDRIVE_OFFICIAL_ORDERS_FOLDER_ID,
@@ -644,7 +645,7 @@ export class StorageService {
     try {
       const raw = localStorage.getItem(STORAGE_KEYS.DELETED_DOCUMENTS);
       const set: Set<string> = new Set(raw ? JSON.parse(raw) : []);
-      // Permanently blacklist legacy mock/sample document IDs
+      // Permanently blacklist legacy mock/sample document IDs only
       set.add('doc-01');
       set.add('doc-02');
       set.add('doc-03');
@@ -661,31 +662,23 @@ export class StorageService {
 
   static isMockSampleDoc(doc: any): boolean {
     if (!doc || !doc.id) return true;
-    const deletedDocIds = this.getDeletedDocIds();
-    if (deletedDocIds.has(doc.id)) return true;
     const id = String(doc.id).toLowerCase();
-    const title = String(doc.title || '').toLowerCase();
-    const fileName = String(doc.fileName || '').toLowerCase();
     const fileUrl = String(doc.fileUrl || '').toLowerCase();
 
+    // STRICT: Only match the exact mock/sample IDs or sample URLs, NEVER match real user uploaded documents!
     if (
       id === 'doc-01' ||
       id === 'doc-02' ||
       id === 'doc-03' ||
       id === 'doc-04' ||
-      title.includes('เยี่ยมบ้าน') ||
-      title.includes('ตารางเวร') ||
-      title.includes('active learning (template 2569)') ||
-      title.includes('ตัวอย่างแบบรายงานวิจัย') ||
-      title.includes('แต่งตั้งคณะกรรมการบริหารงานวิชาการ') ||
-      title.includes('มอบหมายภาระงานสอนและการปฏิบัติหน้าที่พิเศษ') ||
-      fileName.includes('template_active_learning') ||
-      fileName.includes('example_classroom_research') ||
-      fileName.includes('order_academic_committee') ||
-      fileName.includes('order_teaching_assignment') ||
+      id === 'sample_template' ||
+      id === 'sample_research' ||
+      id === 'sample_order_124' ||
+      id === 'sample_order_135' ||
       fileUrl.includes('sample_template') ||
       fileUrl.includes('sample_research') ||
-      fileUrl.includes('sample_order')
+      fileUrl.includes('sample_order_124') ||
+      fileUrl.includes('sample_order_135')
     ) {
       return true;
     }
@@ -697,6 +690,18 @@ export class StorageService {
       const set = this.getDeletedDocIds();
       set.add(id);
       localStorage.setItem(STORAGE_KEYS.DELETED_DOCUMENTS, JSON.stringify(Array.from(set)));
+    } catch {}
+  }
+
+  static removeDeletedDocId(id: string): void {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.DELETED_DOCUMENTS);
+      if (!raw) return;
+      const list = JSON.parse(raw);
+      if (Array.isArray(list)) {
+        const filtered = list.filter((x: string) => x !== id);
+        localStorage.setItem(STORAGE_KEYS.DELETED_DOCUMENTS, JSON.stringify(filtered));
+      }
     } catch {}
   }
 
@@ -1075,9 +1080,12 @@ export class StorageService {
         ? GDRIVE_OFFICIAL_ORDERS_FOLDER_ID
         : GDRIVE_SAMPLE_DOCS_FOLDER_ID);
 
+    const newDocId = `doc-${Date.now()}`;
+    this.removeDeletedDocId(newDocId);
+
     const newDoc: DocumentItem = {
       ...doc,
-      id: `doc-${Date.now()}`,
+      id: newDocId,
       gDriveFolderId: folderId,
       createdAt: getNowISO(),
       updatedAt: getNowISO(),
@@ -1646,10 +1654,10 @@ export class StorageService {
       ];
 
       if (rawDocList.length > 0 || Array.isArray(data.documents)) {
-        const deletedDocIds = this.getDeletedDocIds();
+        // Merge documents: Remote docs merged with local documents
         const currentDocs = this.getDocuments();
 
-        // Detect remote tombstones
+        // 1. Detect tombstones from remote
         rawDocList.forEach((d: any) => {
           if (
             d &&
@@ -1663,6 +1671,9 @@ export class StorageService {
           }
         });
 
+        const deletedDocIds = this.getDeletedDocIds();
+
+        // 2. Map all non-deleted remote docs
         const nonDeletedCloudDocs = rawDocList.filter(
           (d: any) =>
             d &&
@@ -1675,57 +1686,58 @@ export class StorageService {
             d._deleted !== true
         );
 
-        const mappedDocs: DocumentItem[] = nonDeletedCloudDocs.map((d: any) => ({
-          id: d.id,
-          title: d.title || 'เอกสารวิชาการ',
-          category: d.category || 'SAMPLE_DOC',
-          description: d.description || '',
-          fileName: d.fileName || `${d.title || 'document'}.docx`,
-          fileType: d.fileType || 'docx',
-          fileSize: d.fileSize || '1.0 MB',
-          fileUrl: d.fileUrl || '',
-          gDriveFolderId: d.gDriveFolderId || GDRIVE_FOLDER_ID,
-          gDriveFileId: d.gDriveFileId || undefined,
-          fileData: d.fileData || undefined,
-          uploadedBy: d.uploadedBy || 'ผู้ดูแลระบบวิชาการ',
-          createdAt: d.createdAt || getNowISO(),
-          updatedAt: d.updatedAt || d.createdAt || getNowISO(),
-        }));
-
         const mergedDocsMap = new Map<string, DocumentItem>();
-        mappedDocs.forEach((d) => mergedDocsMap.set(d.id, d));
 
-        // Server is source of truth: If a local document was deleted on the server, purge it
-        const now = Date.now();
-        currentDocs.forEach((d) => {
-          if (this.isMockSampleDoc(d)) {
-            this.addDeletedDocId(d.id);
+        nonDeletedCloudDocs.forEach((d: any) => {
+          const fileId = d.gDriveFileId || (d.fileUrl ? extractDriveFileId(d.fileUrl) : undefined);
+          const mappedDoc: DocumentItem = {
+            id: d.id,
+            title: d.title || 'เอกสารวิชาการ',
+            category: d.category || 'SAMPLE_DOC',
+            description: d.description || '',
+            fileName: d.fileName || `${d.title || 'document'}.docx`,
+            fileType: d.fileType || 'docx',
+            fileSize: d.fileSize || '1.0 MB',
+            fileUrl: d.fileUrl || '',
+            gDriveFolderId: d.gDriveFolderId || GDRIVE_FOLDER_ID,
+            gDriveFileId: fileId || undefined,
+            fileData: d.fileData || undefined,
+            uploadedBy: d.uploadedBy || 'ผู้ดูแลระบบวิชาการ',
+            createdAt: d.createdAt || getNowISO(),
+            updatedAt: d.updatedAt || d.createdAt || getNowISO(),
+          };
+          mergedDocsMap.set(d.id, mappedDoc);
+        });
+
+        // 3. Preserve and merge all valid local user documents, and sync them to Cloudflare if not yet on remote
+        currentDocs.forEach((localDoc) => {
+          if (this.isMockSampleDoc(localDoc)) {
+            this.addDeletedDocId(localDoc.id);
             hasChanges = true;
             return;
           }
 
-          if (!deletedDocIds.has(d.id)) {
-            const remote = mergedDocsMap.get(d.id);
-            if (!remote) {
-              const docAgeMs = now - new Date(d.createdAt || 0).getTime();
-              if (docAgeMs > 15000 || isNaN(docAgeMs)) {
-                // Deleted on server (Admin deleted) -> purge from member device
-                this.addDeletedDocId(d.id);
-                hasChanges = true;
-              } else {
-                // Recently created locally (<15s) -> sync up to cloud
-                mergedDocsMap.set(d.id, d);
-                CloudflareApiService.syncDocument(d).catch(() => {});
-              }
+          if (!deletedDocIds.has(localDoc.id)) {
+            const remoteDoc = mergedDocsMap.get(localDoc.id);
+            if (!remoteDoc) {
+              // Local document is not yet on remote (e.g. freshly created) -> preserve locally and push to Cloudflare
+              mergedDocsMap.set(localDoc.id, localDoc);
+              CloudflareApiService.syncDocument(localDoc).catch(() => {});
             } else {
-              const remoteTime = new Date(remote.updatedAt || remote.createdAt || 0).getTime();
-              const localTime = new Date(d.updatedAt || d.createdAt || 0).getTime();
+              const remoteTime = new Date(remoteDoc.updatedAt || remoteDoc.createdAt || 0).getTime();
+              const localTime = new Date(localDoc.updatedAt || localDoc.createdAt || 0).getTime();
               if (localTime > remoteTime) {
-                mergedDocsMap.set(d.id, d);
-                CloudflareApiService.syncDocument(d).catch(() => {});
-              } else if (d.fileData && !remote.fileData) {
-                // Preserve local base64 binary if remote didn't store it
-                mergedDocsMap.set(d.id, { ...remote, fileData: d.fileData });
+                mergedDocsMap.set(localDoc.id, localDoc);
+                CloudflareApiService.syncDocument(localDoc).catch(() => {});
+              } else {
+                // Keep local high-resolution binary cache & fileId if available
+                const mergedDoc: DocumentItem = {
+                  ...remoteDoc,
+                  fileData: localDoc.fileData || remoteDoc.fileData,
+                  gDriveFileId: localDoc.gDriveFileId || remoteDoc.gDriveFileId,
+                  fileUrl: remoteDoc.fileUrl || localDoc.fileUrl,
+                };
+                mergedDocsMap.set(localDoc.id, mergedDoc);
               }
             }
           }
@@ -1745,7 +1757,14 @@ export class StorageService {
           let contentChanged = false;
           for (const d of finalDocs) {
             const old = currentDocMap.get(d.id);
-            if (!old || old.updatedAt !== d.updatedAt || old.title !== d.title || old.fileUrl !== d.fileUrl || old.gDriveFileId !== d.gDriveFileId) {
+            if (
+              !old ||
+              old.updatedAt !== d.updatedAt ||
+              old.title !== d.title ||
+              old.fileUrl !== d.fileUrl ||
+              old.gDriveFileId !== d.gDriveFileId ||
+              old.fileData !== d.fileData
+            ) {
               contentChanged = true;
               break;
             }

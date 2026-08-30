@@ -292,6 +292,10 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
 
     setIsModalOpen(false);
     onRefreshData();
+    try {
+      window.dispatchEvent(new Event('academic-realtime-sync'));
+      window.dispatchEvent(new Event('storage'));
+    } catch {}
   };
 
   const handleDeleteDoc = async (docId: string) => {
@@ -305,6 +309,10 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
       StorageService.deleteDocument(docId);
       notifySuccess(`ลบ${categoryName}สำเร็จ`);
       onRefreshData();
+      try {
+        window.dispatchEvent(new Event('academic-realtime-sync'));
+        window.dispatchEvent(new Event('storage'));
+      } catch {}
     }
   };
 

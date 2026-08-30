@@ -150,16 +150,17 @@ export class CloudflareApiService {
         gDriveFileId: doc.gDriveFileId,
         fileData: safeFileData,
         uploadedBy: doc.uploadedBy,
+        status: 'ACTIVE',
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
       };
 
       // 1. Direct /api/documents endpoint
-      const response = await this.fetchWithTimeout(`${this.workerUrl}/api/documents`, {
+      const p1 = this.fetchWithTimeout(`${this.workerUrl}/api/documents`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(docPayload),
-      }, 3500).catch(() => null);
+      }, 4000).catch(() => null);
 
       // 2. Dual-persistence backup into /api/tasks table with type: 'DOCUMENT_ITEM'
       const metaJson = JSON.stringify({
@@ -174,7 +175,7 @@ export class CloudflareApiService {
         description: doc.description,
       });
 
-      this.fetchWithTimeout(`${this.workerUrl}/api/tasks`, {
+      const p2 = this.fetchWithTimeout(`${this.workerUrl}/api/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -191,9 +192,10 @@ export class CloudflareApiService {
           createdAt: doc.createdAt,
           updatedAt: doc.updatedAt,
         }),
-      }, 3500).catch(() => {});
+      }, 4000).catch(() => null);
 
-      return response ? response.ok : true;
+      await Promise.allSettled([p1, p2]);
+      return true;
     } catch (err) {
       return false;
     }
