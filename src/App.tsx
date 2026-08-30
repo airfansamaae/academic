@@ -111,14 +111,21 @@ export default function App() {
     }
   }, [refreshData]);
 
+  // When switching active tab, immediately trigger live sync to guarantee freshest data
+  const handleTabChange = useCallback((tab: NavigationTab) => {
+    setActiveTab(tab);
+    recordUserActivity();
+    performLiveSync();
+  }, [recordUserActivity, performLiveSync]);
+
   useEffect(() => {
     recordUserActivity();
     performLiveSync();
 
-    // Fast polling (every 4 seconds) for real-time responsiveness across different Google Chrome browsers / devices
+    // Fast background polling (every 2.5 seconds) for real-time responsiveness across all browsers & devices
     const syncInterval = setInterval(() => {
       performLiveSync();
-    }, 4000);
+    }, 2500);
 
     // Periodic inactivity check every 10 seconds
     const inactivityInterval = setInterval(() => {
@@ -145,10 +152,12 @@ export default function App() {
         recordUserActivity();
       }
       refreshData();
+      performLiveSync();
     };
 
     const handleRealtimeBroadcast = () => {
       refreshData();
+      performLiveSync();
     };
 
     // User activity listeners
@@ -222,7 +231,7 @@ export default function App() {
           <Sidebar
             activeTab={activeTab}
             onTabChange={(tab) => {
-              setActiveTab(tab);
+              handleTabChange(tab);
               window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
             userRole={currentUser?.role}
@@ -243,12 +252,12 @@ export default function App() {
                   submissions={submissions}
                   users={users}
                   onNavigateTab={(tab) => {
-                    setActiveTab(tab);
+                    handleTabChange(tab);
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                   }}
                   onSelectTaskToSubmit={(task) => {
                     setPreSelectedTask(task);
-                    setActiveTab('ASSIGN_SUBMIT');
+                    handleTabChange('ASSIGN_SUBMIT');
                   }}
                 />
               )}
@@ -290,7 +299,7 @@ export default function App() {
       <MobileBottomNav
         activeTab={activeTab}
         onTabChange={(tab) => {
-          setActiveTab(tab);
+          handleTabChange(tab);
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
         userRole={currentUser?.role}

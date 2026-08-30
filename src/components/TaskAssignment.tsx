@@ -21,6 +21,8 @@ import {
   Paperclip,
   Users,
   Search,
+  Download,
+  ImageIcon,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import {
@@ -42,7 +44,10 @@ import {
   deleteGoogleDriveFile,
   extractDriveFileId,
   isProtectedRootFolder,
+  downloadGoogleDriveFile,
+  triggerNativeBlobDownload,
 } from '../services/driveUpload';
+import { fileCache } from '../services/fileCache';
 import {
   notifySuccess,
   notifyError,
@@ -170,6 +175,89 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
   // Open file preview modal
   const handleOpenFilePreview = (file: SubmissionFile, sub?: Partial<Submission>) => {
     setPreviewModalFile({ file, sub });
+  };
+
+  // Direct File Download Function - 100% Original File Download
+  const handleDownloadFile = async (file: SubmissionFile, sub?: Partial<Submission>) => {
+    notifyInfo(`กำลังดาวน์โหลดไฟล์ "${file.name}"... 📥`);
+
+    const fileId = file.gDriveFileId || (file.gDriveUrl ? extractDriveFileId(file.gDriveUrl) : null);
+    const relatedTask = tasks.find((t) => t.id === sub?.taskId);
+    const targetFolderId = relatedTask?.gDriveFolderId;
+
+    // 1. If base64 data URL is present in file.previewUrl or file.fileData, convert directly to Blob and download
+    const dataUrlCandidate = file.fileData || (file.previewUrl && file.previewUrl.startsWith('data:') ? file.previewUrl : null);
+    if (dataUrlCandidate && dataUrlCandidate.startsWith('data:')) {
+      try {
+        const res = await fetch(dataUrlCandidate);
+        const blob = await res.blob();
+        if (blob && blob.size > 0) {
+          triggerNativeBlobDownload(blob, file.name);
+          notifySuccess(`ดาวน์โหลด "${file.name}" เรียบร้อยแล้ว 📥`);
+          return;
+        }
+      } catch (err) {
+        console.warn('Base64 direct download fallback:', err);
+      }
+    }
+
+    // 2. Lookup exact original binary file from resilient IndexedDB cache
+    try {
+      const cached = await fileCache.getFile(file.gDriveFileId || file.id || file.name);
+      if (cached && cached.blob && cached.blob.size > 0) {
+        triggerNativeBlobDownload(cached.blob, cached.name || file.name);
+        notifySuccess(`ดาวน์โหลด "${file.name}" เรียบร้อยแล้ว 📥`);
+        return;
+      }
+    } catch (cacheErr) {
+      console.warn('FileCache retrieval error:', cacheErr);
+    }
+
+    // 3. Query Google Drive directly via Google Apps Script Webhook API (downloadFile)
+    if (fileId || file.name) {
+      try {
+        const driveResult = await downloadGoogleDriveFile(
+          fileId || file.gDriveUrl || file.id,
+          file.name,
+          targetFolderId
+        );
+        if (driveResult.success && driveResult.blob && driveResult.blob.size > 0) {
+          triggerNativeBlobDownload(driveResult.blob, driveResult.fileName || file.name);
+          notifySuccess(`ดาวน์โหลด "${file.name}" สำเร็จเรียบร้อยแล้ว 📥`);
+          return;
+        }
+      } catch (gasErr) {
+        console.warn('GAS Webhook file retrieval error:', gasErr);
+      }
+    }
+
+    // 4. Direct file download endpoint
+    if (fileId && !fileId.startsWith('sample') && fileId !== GDRIVE_FOLDER_ID && !isProtectedRootFolder(fileId)) {
+      const driveDownloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+      const win = window.open(driveDownloadUrl, '_blank');
+      if (win) {
+        notifySuccess(`กำลังเริ่มดาวน์โหลด "${file.name}"... 📥`);
+        return;
+      }
+    }
+
+    // 5. If it is an accessible HTTP URL
+    if (file.gDriveUrl && file.gDriveUrl.startsWith('http') && !file.gDriveUrl.includes('drive.google.com/drive/folders')) {
+      try {
+        const res = await fetch(file.gDriveUrl);
+        if (res.ok) {
+          const blob = await res.blob();
+          if (blob.size > 0) {
+            triggerNativeBlobDownload(blob, file.name);
+            notifySuccess(`ดาวน์โหลด "${file.name}" สำเร็จเรียบร้อยแล้ว 📥`);
+            return;
+          }
+        }
+      } catch {}
+    }
+
+    // Fallback notification
+    notifyError(`ไม่สามารถดาวน์โหลดไฟล์ "${file.name}" ได้ กรุณาลองใหม่อีกครั้ง`);
   };
 
   // Open modal to submit new task
@@ -1847,15 +1935,25 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
                                         </div>
                                       </div>
 
-                                      <button
-                                        type="button"
-                                        onClick={() => handleOpenFilePreview(file, sub)}
-                                        className="px-2.5 py-1.5 text-xs font-bold text-purple-800 bg-purple-50 hover:bg-purple-600 hover:text-white border border-purple-200 rounded-lg transition-all inline-flex items-center space-x-1 cursor-pointer shrink-0 group-hover:shadow-xs active:scale-95"
-                                        title={`คลิกเพื่อดูไฟล์ ${file.name}`}
-                                      >
-                                        <Eye className="w-3.5 h-3.5" />
-                                        <span>ดูไฟล์</span>
-                                      </button>
+                                      <div className="flex items-center space-x-1 shrink-0">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenFilePreview(file, sub)}
+                                          className="px-2.5 py-1.5 text-xs font-bold text-purple-800 bg-purple-50 hover:bg-purple-600 hover:text-white border border-purple-200 rounded-lg transition-all inline-flex items-center space-x-1 cursor-pointer shrink-0 group-hover:shadow-xs active:scale-95"
+                                          title={`คลิกเพื่อดูไฟล์ ${file.name}`}
+                                        >
+                                          <Eye className="w-3.5 h-3.5" />
+                                          <span>ดูไฟล์</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDownloadFile(file, sub)}
+                                          className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 border border-slate-200 rounded-lg transition-colors cursor-pointer shrink-0"
+                                          title={`ดาวน์โหลด ${file.name}`}
+                                        >
+                                          <Download className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
                                     </div>
                                   ))}
                                 </div>
@@ -1890,114 +1988,175 @@ export const TaskAssignment: React.FC<TaskAssignmentProps> = ({
         </div>
       )}
 
-      {/* ================= FILE PREVIEW MODAL (สำหรับกดไอคอนตา 👁️ เพื่อดูไฟล์เท่านั้น) ================= */}
-      {previewModalFile && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-5 sm:p-6 shadow-2xl border border-slate-100 relative my-6 animate-in fade-in zoom-in duration-200 max-h-[92vh] flex flex-col">
-            {/* Close Button */}
-            <button
-              type="button"
-              onClick={() => setPreviewModalFile(null)}
-              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer z-10"
-              title="ปิดหน้าต่าง"
-            >
-              <X className="w-5 h-5" />
-            </button>
+      {/* ========================================================================= */}
+      {/* ==================== PREVIEW FILE VIEWER MODAL (EYE ICON) ================ */}
+      {/* ========================================================================= */}
+      {previewModalFile && (() => {
+        const file = previewModalFile.file;
+        const sub = previewModalFile.sub;
+        const fileId = file.gDriveFileId || (file.gDriveUrl ? extractDriveFileId(file.gDriveUrl) : null);
+        const hasValidDriveId = Boolean(
+          fileId &&
+          !fileId.startsWith('sample') &&
+          fileId !== GDRIVE_FOLDER_ID &&
+          !isProtectedRootFolder(fileId)
+        );
 
-            {/* Modal Header */}
-            <div className="flex items-center space-x-3 pb-3.5 mb-3 border-b border-slate-100 shrink-0 pr-8">
-              <div className="w-10 h-10 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
-                <Eye className="w-5 h-5" />
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-base font-bold text-slate-900 truncate">
-                  {previewModalFile.file.name}
-                </h3>
-                <p className="text-xs text-slate-500 truncate">
-                  {previewModalFile.sub?.memberName ? `ผู้ส่ง: ${previewModalFile.sub.memberName}` : 'ไฟล์หลักฐานการส่งงาน'}
-                  {previewModalFile.sub?.memberSchool ? ` • ${previewModalFile.sub.memberSchool}` : ''}
-                </p>
-              </div>
-            </div>
+        const isImage =
+          file.name.match(/\.(png|jpe?g|webp|gif|bmp|svg)$/i) ||
+          file.type?.startsWith('image/');
+        const isPdf = file.name.endsWith('.pdf') || file.type?.includes('pdf');
+        const isSpreadsheet = file.name.match(/\.(xlsx|xls|csv)$/);
+        const isWord = file.name.match(/\.(docx?|dotx?)$/i);
 
-            {/* Preview Body */}
-            <div className="flex-1 overflow-y-auto space-y-3 py-1">
-              {/* Image Preview */}
-              {(previewModalFile.file.previewUrl ||
-                previewModalFile.file.name.match(/\.(png|jpe?g|webp|gif|bmp|svg)$/i) ||
-                previewModalFile.file.type?.startsWith('image/')) ? (
-                <div className="bg-slate-900/5 rounded-2xl p-3 border border-slate-200 flex items-center justify-center min-h-[260px] max-h-[440px] overflow-hidden">
-                  <img
-                    src={previewModalFile.file.previewUrl || (previewModalFile.file.gDriveUrl ? `https://lh3.googleusercontent.com/d/${extractDriveFileId(previewModalFile.file.gDriveUrl)}` : '')}
-                    alt={previewModalFile.file.name}
-                    className="max-w-full max-h-[420px] object-contain rounded-xl shadow-xs"
-                    onError={(e) => {
-                      // Fallback if image fails to load direct url
-                      (e.target as HTMLElement).style.display = 'none';
-                    }}
-                  />
+        return (
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl max-w-4xl w-full h-[85vh] max-h-[850px] shadow-2xl border border-slate-100 flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 relative">
+              {/* Modal Header */}
+              <div className="px-5 py-4 border-b border-slate-200/80 bg-slate-50/90 flex items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center space-x-3 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center shrink-0 border border-purple-200 shadow-2xs">
+                    {isImage ? (
+                      <ImageIcon className="w-5 h-5 text-amber-600" />
+                    ) : isPdf ? (
+                      <FileText className="w-5 h-5 text-rose-600" />
+                    ) : isSpreadsheet ? (
+                      <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                    ) : (
+                      <File className="w-5 h-5 text-purple-600" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-sm sm:text-base font-bold text-slate-900 truncate">
+                      {file.name}
+                    </h3>
+                    <p className="text-xs text-slate-500 font-mono mt-0.5 truncate flex items-center space-x-2">
+                      <span>ผู้ส่ง: {sub?.memberName || 'บุคลากร'}</span>
+                      <span>•</span>
+                      <span>ขนาด: {formatFileSize(file.size)}</span>
+                    </p>
+                  </div>
                 </div>
-              ) : (
-                /* Document Details View */
-                <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200 space-y-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="p-3 bg-purple-100 text-purple-700 rounded-2xl">
-                      {previewModalFile.file.name.endsWith('.pdf') ? (
-                        <FileText className="w-8 h-8 text-rose-600" />
-                      ) : previewModalFile.file.name.match(/\.(xlsx|xls|csv)$/) ? (
+
+                <div className="flex items-center space-x-2 shrink-0">
+                  {hasValidDriveId && (
+                    <a
+                      href={`https://drive.google.com/file/d/${fileId}/preview`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors shadow-2xs"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+                      <span>เปิดดูเต็มจอ</span>
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setPreviewModalFile(null)}
+                    className="w-9 h-9 rounded-xl bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 border border-slate-200 flex items-center justify-center transition-colors cursor-pointer shadow-2xs"
+                    title="ปิดหน้าต่างตัวอย่าง"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Body */}
+              <div className="flex-1 bg-slate-100/70 p-2 sm:p-4 overflow-hidden relative flex flex-col items-center justify-center">
+                {hasValidDriveId ? (
+                  <iframe
+                    src={`https://drive.google.com/file/d/${fileId}/preview`}
+                    title={file.name}
+                    className="w-full h-full rounded-2xl bg-white border border-slate-200 shadow-inner"
+                    allow="autoplay"
+                  />
+                ) : (file.fileData && file.fileData.startsWith('data:image/')) || (file.previewUrl && file.previewUrl.startsWith('data:image/')) ? (
+                  <div className="w-full h-full flex items-center justify-center overflow-auto p-4 bg-white rounded-2xl border border-slate-200">
+                    <img
+                      src={file.fileData || file.previewUrl}
+                      alt={file.name}
+                      className="max-h-full max-w-full object-contain rounded-lg shadow-md"
+                    />
+                  </div>
+                ) : (file.fileData && file.fileData.startsWith('data:application/pdf')) || (file.previewUrl && file.previewUrl.startsWith('data:application/pdf')) ? (
+                  <iframe
+                    src={file.fileData || file.previewUrl}
+                    title={file.name}
+                    className="w-full h-full rounded-2xl bg-white border border-slate-200"
+                  />
+                ) : (
+                  <div className="max-w-md w-full bg-white rounded-3xl p-6 sm:p-8 text-center border border-slate-200 shadow-sm space-y-4">
+                    <div className="w-16 h-16 bg-purple-50 text-purple-600 rounded-3xl flex items-center justify-center mx-auto ring-8 ring-purple-50/50">
+                      {isWord ? (
+                        <FileText className="w-8 h-8 text-blue-600" />
+                      ) : isSpreadsheet ? (
                         <FileSpreadsheet className="w-8 h-8 text-emerald-600" />
                       ) : (
                         <File className="w-8 h-8 text-purple-600" />
                       )}
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-slate-800">{previewModalFile.file.name}</p>
-                      <p className="text-xs text-slate-500 font-mono">
-                        ขนาด: {formatFileSize(previewModalFile.file.size)} • ชนิด: {previewModalFile.file.type || 'เอกสารทางวิชาการ'}
+                      <h4 className="font-bold text-slate-900 text-sm sm:text-base">
+                        {file.name}
+                      </h4>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {sub?.subject ? `หัวข้อ: ${sub.subject}` : 'ไฟล์หลักฐานการส่งงาน'}
                       </p>
                     </div>
-                  </div>
 
-                  {previewModalFile.sub && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-slate-200/80 text-xs">
-                      <div>
-                        <span className="text-slate-400 block font-medium">หัวข้องานที่ส่ง:</span>
-                        <span className="text-slate-800 font-bold">{previewModalFile.sub.subject || '-'}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block font-medium">วันที่ส่งงาน:</span>
-                        <span className="text-slate-800 font-semibold font-mono">
-                          {new Date(previewModalFile.file.uploadedAt || previewModalFile.sub.submittedAt || Date.now()).toLocaleString('th-TH')}
-                        </span>
-                      </div>
-                      {previewModalFile.sub.description && (
-                        <div className="sm:col-span-2 bg-white p-3 rounded-xl border border-slate-200/70">
-                          <span className="text-slate-400 block font-medium mb-1">คำชี้แจง / หมายเหตุ:</span>
-                          <p className="text-slate-700 leading-relaxed">{previewModalFile.sub.description}</p>
-                        </div>
+                    <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2">
+                      {file.gDriveUrl && (
+                        <a
+                          href={file.gDriveUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="w-full sm:w-auto inline-flex items-center justify-center space-x-1.5 px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-colors"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+                          <span>เปิดดูเอกสาร</span>
+                        </a>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadFile(file, sub)}
+                        className="w-full sm:w-auto inline-flex items-center justify-center space-x-1.5 px-4 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl transition-colors shadow-2xs cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>ดาวน์โหลดไฟล์</span>
+                      </button>
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
+                  </div>
+                )}
+              </div>
 
-            {/* Modal Footer */}
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between shrink-0">
-              <span className="text-xs text-slate-400 font-medium">
-                👁️ โหมดแสดงตัวอย่างไฟล์ (View Only)
-              </span>
-              <button
-                type="button"
-                onClick={() => setPreviewModalFile(null)}
-                className="px-5 py-2 text-xs sm:text-sm font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
-              >
-                ปิด
-              </button>
+              {/* Modal Footer Controls */}
+              <div className="px-5 py-3 border-t border-slate-200/80 bg-white flex flex-wrap items-center justify-between gap-3 shrink-0">
+                <div className="text-xs text-slate-500">
+                  <span>สถานะ: </span>
+                  <span className="font-semibold text-emerald-600">พร้อมเปิดดูและดาวน์โหลด</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadFile(file, sub)}
+                    className="inline-flex items-center space-x-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>ดาวน์โหลดไฟล์</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewModalFile(null)}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    ปิด
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };

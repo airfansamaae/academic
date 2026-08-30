@@ -311,27 +311,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
    * Preview original file immediately with 1 click for both Admin and Member
    */
   const handlePreviewFile = (doc: DocumentItem) => {
-    const fileId = doc.gDriveFileId || (doc.fileUrl ? extractDriveFileId(doc.fileUrl) : null);
-    const hasValidDriveId = Boolean(
-      fileId &&
-      fileId.length >= 20 &&
-      !fileId.startsWith('sample') &&
-      !fileId.startsWith('file-') &&
-      fileId !== GDRIVE_FOLDER_ID &&
-      fileId !== GDRIVE_OFFICIAL_ORDERS_FOLDER_ID &&
-      fileId !== GDRIVE_SAMPLE_DOCS_FOLDER_ID
-    );
-    const targetFolderId = doc.category === 'OFFICIAL_ORDER' ? GDRIVE_OFFICIAL_ORDERS_FOLDER_ID : GDRIVE_SAMPLE_DOCS_FOLDER_ID;
-
-    if (hasValidDriveId) {
-      // 1-Click direct opening of original Google Drive preview viewer
-      const drivePreviewUrl = `https://drive.google.com/file/d/${fileId}/view`;
-      window.open(drivePreviewUrl, '_blank');
-    } else if (doc.fileUrl && doc.fileUrl.startsWith('http') && !doc.fileUrl.includes('drive.google.com/drive/folders')) {
-      window.open(doc.fileUrl, '_blank');
-    } else {
-      window.open(`https://drive.google.com/drive/folders/${targetFolderId}`, '_blank');
-    }
+    setPreviewDoc(doc);
   };
 
   /**
@@ -340,7 +320,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
   const handleDownload = async (doc: DocumentItem) => {
     try {
       const fileName = doc.fileName || `${doc.title}.${(doc.fileType || 'docx').toLowerCase()}`;
-      notifyInfo(`กำลังดาวน์โหลดไฟล์ต้นฉบับ "${fileName}"... ⏳`);
+      notifyInfo(`กำลังดาวน์โหลดไฟล์ "${fileName}"... 📥`);
 
       const fileId = doc.gDriveFileId || (doc.fileUrl ? extractDriveFileId(doc.fileUrl) : undefined);
       const targetFolderId = doc.category === 'OFFICIAL_ORDER' ? GDRIVE_OFFICIAL_ORDERS_FOLDER_ID : GDRIVE_SAMPLE_DOCS_FOLDER_ID;
@@ -359,14 +339,14 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
         const cached = await fileCache.getFile(fileId || doc.fileName || doc.id);
         if (cached && cached.blob && cached.blob.size > 0) {
           triggerNativeBlobDownload(cached.blob, cached.name || fileName);
-          notifySuccess(`ดาวน์โหลด "${fileName}" ต้นฉบับสมบูรณ์เรียบร้อยแล้ว 📥`);
+          notifySuccess(`ดาวน์โหลด "${fileName}" เรียบร้อยแล้ว 📥`);
           return;
         }
       } catch (cacheErr) {
         console.warn('FileCache retrieval error:', cacheErr);
       }
 
-      // 2. Fetch original binary directly from Google Drive via GAS Webhook API
+      // 2. Fetch original binary directly via GAS Webhook API
       try {
         const driveResult = await downloadGoogleDriveFile(
           fileId || doc.fileUrl,
@@ -382,7 +362,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
         console.warn('DocumentCenter GAS Webhook file retrieval error:', gasErr);
       }
 
-      // 3. Direct Google Drive file stream download
+      // 3. Direct file stream download
       if (hasValidDriveId) {
         try {
           const directDriveDownloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`;
@@ -395,7 +375,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
           setTimeout(() => {
             if (document.body.contains(a)) document.body.removeChild(a);
           }, 1000);
-          notifySuccess(`กำลังเริ่มดาวน์โหลด "${fileName}" จาก Google Drive... 📥`);
+          notifySuccess(`กำลังเริ่มดาวน์โหลด "${fileName}"... 📥`);
           return;
         } catch (linkErr) {
           console.warn('Direct link download error:', linkErr);
@@ -418,20 +398,17 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
         }
       }
 
-      // 5. Open file or folder in Google Drive directly
-      if (doc.fileUrl && doc.fileUrl.startsWith('http')) {
+      // 5. Open file directly
+      if (doc.fileUrl && doc.fileUrl.startsWith('http') && !doc.fileUrl.includes('drive.google.com/drive/folders')) {
         window.open(doc.fileUrl, '_blank');
-        notifySuccess(`เปิดไฟล์ "${fileName}" ใน Google Drive เรียบร้อยแล้ว 📥`);
+        notifySuccess(`เปิดไฟล์ "${fileName}" เรียบร้อยแล้ว 📥`);
         return;
       }
 
-      window.open(`https://drive.google.com/drive/folders/${targetFolderId}`, '_blank');
-      notifySuccess(`เปิดโฟลเดอร์เอกสารใน Google Drive เรียบร้อยแล้ว 📥`);
+      notifyError(`ไม่สามารถดาวน์โหลดไฟล์ "${fileName}" ได้ กรุณาลองใหม่อีกครั้ง`);
     } catch (err) {
       console.error('Download error:', err);
-      const targetFolderId = doc.category === 'OFFICIAL_ORDER' ? GDRIVE_OFFICIAL_ORDERS_FOLDER_ID : GDRIVE_SAMPLE_DOCS_FOLDER_ID;
-      window.open(`https://drive.google.com/drive/folders/${targetFolderId}`, '_blank');
-      notifySuccess(`เปิดเอกสารใน Google Drive เรียบร้อยแล้ว`);
+      notifyError(`เกิดข้อผิดพลาดในการดาวน์โหลดไฟล์ กรุณาลองใหม่อีกครั้ง`);
     }
   };
 
@@ -603,6 +580,54 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
                 {categoryCounts.officialOrders}
               </span>
             </button>
+          </div>
+        </div>
+
+        {/* Google Drive Folder Direct Access for Admin and Members */}
+        <div className="pt-4 pb-2">
+          <div className="bg-slate-50 p-3 sm:p-4 rounded-2xl border border-slate-200/80 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs">
+            <div className="flex items-center space-x-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-700 flex items-center justify-center shrink-0 border border-amber-200/60">
+                <FolderArchive className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-xs sm:text-sm font-bold text-slate-800 flex items-center space-x-1.5">
+                  <span>เข้าสู่โฟลเดอร์ Google Drive โดยตรง</span>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 bg-amber-100 text-amber-800 rounded-md">
+                    Admin & สมาชิก
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  คลิกเพื่อเปิดดูโฟลเดอร์จัดเก็บไฟล์ต้นฉบับใน Google Drive แยกตามหมวดหมู่
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href={`https://drive.google.com/drive/folders/${GDRIVE_SAMPLE_DOCS_FOLDER_ID}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center space-x-1.5 px-3 py-2 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200/80 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95"
+                title="เปิดโฟลเดอร์ Google Drive: เอกสารตัวอย่าง"
+              >
+                <FileText className="w-3.5 h-3.5 text-teal-600" />
+                <span>โฟลเดอร์: เอกสารตัวอย่าง</span>
+                <ExternalLink className="w-3 h-3 text-teal-500" />
+              </a>
+
+              <a
+                href={`https://drive.google.com/drive/folders/${GDRIVE_OFFICIAL_ORDERS_FOLDER_ID}`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center space-x-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200/80 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95"
+                title="เปิดโฟลเดอร์ Google Drive: หนังสือคำสั่ง"
+              >
+                <File className="w-3.5 h-3.5 text-blue-600" />
+                <span>โฟลเดอร์: หนังสือคำสั่ง</span>
+                <ExternalLink className="w-3 h-3 text-blue-500" />
+              </a>
+            </div>
           </div>
         </div>
 
