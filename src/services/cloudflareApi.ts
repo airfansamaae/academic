@@ -50,17 +50,64 @@ export class CloudflareApiService {
    */
   public static async fetchAllData(): Promise<CloudflareSyncPayload | null> {
     try {
-      const response = await this.fetchWithTimeout(`${this.workerUrl}/api/all-data`, {
+      // 1. Fetch main all-data payload
+      const resAll = await this.fetchWithTimeout(`${this.workerUrl}/api/all-data`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
         },
-      }, 4000);
+      }, 4000).catch(() => null);
 
-      if (response.ok) {
-        const data = await response.json();
-        return data as CloudflareSyncPayload;
+      let data: CloudflareSyncPayload = {};
+      if (resAll && resAll.ok) {
+        try {
+          const parsed = await resAll.json();
+          if (parsed && typeof parsed === 'object') {
+            data = parsed as CloudflareSyncPayload;
+          }
+        } catch {}
       }
+
+      // 2. Fetch dedicated /api/documents endpoint to ensure all uploaded docs are synced across all browsers
+      try {
+        const resDocs = await this.fetchWithTimeout(`${this.workerUrl}/api/documents`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+          },
+        }, 3500).catch(() => null);
+
+        if (resDocs && resDocs.ok) {
+          const docsData = await resDocs.json();
+          let directDocs: DocumentItem[] = [];
+          if (Array.isArray(docsData)) {
+            directDocs = docsData;
+          } else if (docsData && Array.isArray(docsData.documents)) {
+            directDocs = docsData.documents;
+          } else if (docsData && Array.isArray(docsData.data)) {
+            directDocs = docsData.data;
+          }
+
+          if (directDocs.length > 0) {
+            const existingDocs = Array.isArray(data.documents) ? data.documents : [];
+            const docMap = new Map<string, DocumentItem>();
+            existingDocs.forEach((d) => {
+              if (d && d.id) docMap.set(d.id, d);
+            });
+            directDocs.forEach((d) => {
+              if (d && d.id) {
+                const existing = docMap.get(d.id);
+                if (!existing || new Date(d.updatedAt || d.createdAt || 0).getTime() >= new Date(existing.updatedAt || existing.createdAt || 0).getTime()) {
+                  docMap.set(d.id, d);
+                }
+              }
+            });
+            data.documents = Array.from(docMap.values());
+          }
+        }
+      } catch {}
+
+      return data;
     } catch (err) {
       // Non-blocking fallback
     }

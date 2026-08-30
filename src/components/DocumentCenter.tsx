@@ -217,12 +217,12 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
         : GDRIVE_SAMPLE_DOCS_FOLDER_ID;
 
     try {
-      notifyInfo(`กำลังอัปโหลดไฟล์ "${file.name}" เข้าสู่ Google Drive... ⏳`);
+      notifyInfo(`กำลังอัปโหลดและจัดเก็บไฟล์ "${file.name}"... ⏳`);
       const uploadResult = await uploadFileToGoogleDrive(file, targetFolderId);
       const fileId = uploadResult.fileId && !uploadResult.fileId.startsWith('file-') ? uploadResult.fileId : '';
       const finalUrl = fileId
         ? `https://drive.google.com/file/d/${fileId}/view?usp=sharing`
-        : (uploadResult.fileUrl || `https://drive.google.com/drive/folders/${targetFolderId}`);
+        : (uploadResult.fileUrl && !uploadResult.fileUrl.includes('/drive/folders/') ? uploadResult.fileUrl : '');
       
       setDocFileUrl(finalUrl);
       if (fileId) setDocFileId(fileId);
@@ -230,12 +230,12 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
         setDocFileData(uploadResult.downloadUrl);
       }
       setIsUploading(false);
-      notifySuccess(`อัปโหลดไฟล์ "${file.name}" เข้าสู่ Google Drive เรียบร้อยแล้ว ☁️`);
+      notifySuccess(`อัปโหลดและจัดเก็บไฟล์ "${file.name}" เข้าสู่ระบบเรียบร้อยแล้ว ✨`);
     } catch (err) {
       console.error('Upload error in Document Center:', err);
-      setDocFileUrl(`https://drive.google.com/drive/folders/${targetFolderId}`);
+      setDocFileUrl('');
       setIsUploading(false);
-      notifySuccess(`แนบไฟล์ "${file.name}" เรียบร้อยแล้ว`);
+      notifySuccess(`แนบไฟล์ "${file.name}" เข้าสู่ระบบเรียบร้อยแล้ว`);
     }
   };
 
@@ -256,7 +256,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
         : GDRIVE_SAMPLE_DOCS_FOLDER_ID;
 
     const finalFileId = docFileId || (docFileUrl ? extractDriveFileId(docFileUrl) : undefined);
-    const finalUrl = docFileUrl || (finalFileId ? `https://drive.google.com/file/d/${finalFileId}/view?usp=sharing` : `https://drive.google.com/drive/folders/${targetFolderId}`);
+    const finalUrl = docFileUrl || (finalFileId ? `https://drive.google.com/file/d/${finalFileId}/view?usp=sharing` : '');
 
     if (editingDoc) {
       StorageService.updateDocument({
@@ -267,7 +267,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
         fileName: docFileName.trim(),
         fileType: docFileType,
         fileSize: docFileSize || '1.0 MB',
-        fileUrl: finalUrl,
+        fileUrl: finalUrl || editingDoc.fileUrl,
         gDriveFolderId: targetFolderId,
         gDriveFileId: finalFileId || editingDoc.gDriveFileId,
         fileData: docFileData || editingDoc.fileData,
@@ -287,7 +287,7 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
         fileData: docFileData || undefined,
         uploadedBy: currentUser?.fullName || 'ผู้ดูแลระบบวิชาการ',
       });
-      notifySuccess('เพิ่มเอกสารและบันทึกลงระบบสำเร็จ');
+      notifySuccess('บันทึกเอกสารเข้าสู่ศูนย์วิชาการสำเร็จ');
     }
 
     setIsModalOpen(false);
@@ -597,54 +597,6 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
                 {categoryCounts.officialOrders}
               </span>
             </button>
-          </div>
-        </div>
-
-        {/* Google Drive Folder Direct Access for Admin and Members */}
-        <div className="pt-4 pb-2">
-          <div className="bg-slate-50 p-3 sm:p-4 rounded-2xl border border-slate-200/80 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs">
-            <div className="flex items-center space-x-3">
-              <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-700 flex items-center justify-center shrink-0 border border-amber-200/60">
-                <FolderArchive className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-xs sm:text-sm font-bold text-slate-800 flex items-center space-x-1.5">
-                  <span>เข้าสู่โฟลเดอร์ Google Drive โดยตรง</span>
-                  <span className="text-[10px] font-semibold px-2 py-0.5 bg-amber-100 text-amber-800 rounded-md">
-                    Admin & สมาชิก
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  คลิกเพื่อเปิดดูโฟลเดอร์จัดเก็บไฟล์ต้นฉบับใน Google Drive แยกตามหมวดหมู่
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <a
-                href={`https://drive.google.com/drive/folders/${GDRIVE_SAMPLE_DOCS_FOLDER_ID}`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center space-x-1.5 px-3 py-2 bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200/80 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95"
-                title="เปิดโฟลเดอร์ Google Drive: เอกสารตัวอย่าง"
-              >
-                <FileText className="w-3.5 h-3.5 text-teal-600" />
-                <span>โฟลเดอร์: เอกสารตัวอย่าง</span>
-                <ExternalLink className="w-3 h-3 text-teal-500" />
-              </a>
-
-              <a
-                href={`https://drive.google.com/drive/folders/${GDRIVE_OFFICIAL_ORDERS_FOLDER_ID}`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center space-x-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200/80 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95"
-                title="เปิดโฟลเดอร์ Google Drive: หนังสือคำสั่ง"
-              >
-                <File className="w-3.5 h-3.5 text-blue-600" />
-                <span>โฟลเดอร์: หนังสือคำสั่ง</span>
-                <ExternalLink className="w-3 h-3 text-blue-500" />
-              </a>
-            </div>
           </div>
         </div>
 
@@ -997,10 +949,18 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
       {/* ========================================================================= */}
       {previewDoc && (() => {
         const fileId = previewDoc.gDriveFileId || (previewDoc.fileUrl ? extractDriveFileId(previewDoc.fileUrl) : null);
-        const hasValidDriveId = Boolean(fileId && !fileId.startsWith('sample') && fileId !== GDRIVE_FOLDER_ID && fileId !== GDRIVE_OFFICIAL_ORDERS_FOLDER_ID && fileId !== GDRIVE_SAMPLE_DOCS_FOLDER_ID);
-        const directDriveViewUrl = hasValidDriveId
+        const hasValidDriveId = Boolean(
+          fileId &&
+          fileId.length >= 20 &&
+          !fileId.startsWith('sample') &&
+          !fileId.startsWith('file-') &&
+          fileId !== GDRIVE_FOLDER_ID &&
+          fileId !== GDRIVE_OFFICIAL_ORDERS_FOLDER_ID &&
+          fileId !== GDRIVE_SAMPLE_DOCS_FOLDER_ID
+        );
+        const directFileViewUrl = hasValidDriveId
           ? `https://drive.google.com/file/d/${fileId}/view?usp=sharing`
-          : (previewDoc.fileUrl && previewDoc.fileUrl.startsWith('http') ? previewDoc.fileUrl : GDRIVE_FOLDER_URL);
+          : (previewDoc.fileUrl && previewDoc.fileUrl.startsWith('http') && !previewDoc.fileUrl.includes('/drive/folders/') ? previewDoc.fileUrl : null);
 
         const isImage =
           previewDoc.fileName.match(/\.(png|jpe?g|webp|gif|bmp|svg)$/i) ||
@@ -1048,15 +1008,18 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
                 </div>
 
                 <div className="flex items-center space-x-2 shrink-0">
-                  <a
-                    href={directDriveViewUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors shadow-2xs"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
-                    <span>เปิดดูเอกสาร</span>
-                  </a>
+                  {directFileViewUrl && (
+                    <a
+                      href={directFileViewUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors shadow-2xs cursor-pointer"
+                      title="เปิดดูไฟล์ต้นฉบับในแท็บใหม่"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+                      <span>เปิดดูเอกสาร</span>
+                    </a>
+                  )}
                   <button
                     type="button"
                     onClick={() => setPreviewDoc(null)}
@@ -1091,6 +1054,12 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
                     title={previewDoc.fileName}
                     className="w-full h-full rounded-2xl bg-white border border-slate-200"
                   />
+                ) : previewDoc.fileUrl && previewDoc.fileUrl.startsWith('http') && !previewDoc.fileUrl.includes('/drive/folders/') ? (
+                  <iframe
+                    src={`https://docs.google.com/viewer?url=${encodeURIComponent(previewDoc.fileUrl)}&embedded=true`}
+                    title={previewDoc.fileName}
+                    className="w-full h-full rounded-2xl bg-white border border-slate-200"
+                  />
                 ) : (
                   <div className="max-w-md w-full bg-white rounded-3xl p-6 sm:p-8 text-center border border-slate-200 shadow-sm space-y-4">
                     <div className="w-16 h-16 bg-purple-50 text-purple-600 rounded-3xl flex items-center justify-center mx-auto ring-8 ring-purple-50/50">
@@ -1112,15 +1081,17 @@ export const DocumentCenter: React.FC<DocumentCenterProps> = ({
                     </div>
 
                     <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2">
-                      <a
-                        href={directDriveViewUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="w-full sm:w-auto inline-flex items-center justify-center space-x-1.5 px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-colors"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
-                        <span>เปิดดูเอกสาร</span>
-                      </a>
+                      {directFileViewUrl && (
+                        <a
+                          href={directFileViewUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="w-full sm:w-auto inline-flex items-center justify-center space-x-1.5 px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-colors cursor-pointer"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+                          <span>เปิดดูเอกสาร</span>
+                        </a>
+                      )}
                       <button
                         type="button"
                         onClick={() => handleDownload(previewDoc)}
